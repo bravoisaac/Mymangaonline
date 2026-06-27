@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,11 +20,13 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   getMangaLibrary,
+  getMangaTags,
   MANGADEX_API_URL,
   MANGA_LANGUAGES,
   searchManga,
   type MangaLanguage,
   type MangaSearchResult,
+  type MangaTag,
 } from '@/services/mangadex';
 
 const INITIAL_QUERY = 'one piece';
@@ -56,10 +58,15 @@ export default function ReaderScreen() {
   const [libraryPage, setLibraryPage] = useState(0);
   const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<MangaTag[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const autoSearch = getParam(params.autoSearch);
   const libraryPageCount = Math.max(1, Math.ceil(libraryTotal / LIBRARY_PAGE_SIZE));
   const canGoToPreviousLibraryPage = libraryPage > 0 && !isLoadingLibrary;
   const canGoToNextLibraryPage = libraryPage + 1 < libraryPageCount && !isLoadingLibrary;
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId);
 
   const contentInset = useMemo(
     () => ({
@@ -71,11 +78,75 @@ export default function ReaderScreen() {
     [safeAreaInsets],
   );
 
-  useEffect(() => {
-    if (autoSearch === '1' && initialQuery.trim()) {
-      void runSearch(initialQuery, getInitialLanguage(params.language));
+  const runSearch = useCallback(async (nextQuery: string, nextLanguage: MangaLanguage) => {
+    if (!nextQuery.trim()) {
+      return;
     }
-  }, [autoSearch, initialQuery, params.language]);
+
+    try {
+      setQuery(nextQuery);
+      setLanguage(nextLanguage);
+      setLibraryPage(0);
+      setIsSearching(true);
+      setError(null);
+      const nextResults = await searchManga(nextQuery, nextLanguage, {
+        tagId: selectedCategoryId ?? undefined,
+      });
+      setResults(nextResults);
+    } catch (searchError) {
+      setError(searchError instanceof Error ? searchError.message : 'No se pudo buscar manga');
+    } finally {
+      setIsSearching(false);
+    }
+  }, [selectedCategoryId]);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    async function runInitialSearch() {
+      await Promise.resolve();
+
+      if (isCurrentRequest && autoSearch === '1' && initialQuery.trim()) {
+        await runSearch(initialQuery, getInitialLanguage(params.language));
+      }
+    }
+
+    void runInitialSearch();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [autoSearch, initialQuery, params.language, runSearch]);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    async function loadCategories() {
+      try {
+        setIsLoadingCategories(true);
+        setCategoryError(null);
+        const nextCategories = await getMangaTags(language);
+
+        if (isCurrentRequest) {
+          setCategories(nextCategories);
+        }
+      } catch (loadError) {
+        if (isCurrentRequest) {
+          setCategoryError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar categorias');
+        }
+      } finally {
+        if (isCurrentRequest) {
+          setIsLoadingCategories(false);
+        }
+      }
+    }
+
+    void loadCategories();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [language]);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -84,7 +155,9 @@ export default function ReaderScreen() {
       try {
         setIsLoadingLibrary(true);
         setLibraryError(null);
-        const nextPage = await getMangaLibrary(language, libraryPage, LIBRARY_PAGE_SIZE);
+        const nextPage = await getMangaLibrary(language, libraryPage, LIBRARY_PAGE_SIZE, {
+          tagId: selectedCategoryId ?? undefined,
+        });
 
         if (isCurrentRequest) {
           setLibraryMangas(nextPage.mangas);
@@ -106,27 +179,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage]);
-
-  async function runSearch(nextQuery: string, nextLanguage: MangaLanguage) {
-    if (!nextQuery.trim()) {
-      return;
-    }
-
-    try {
-      setQuery(nextQuery);
-      setLanguage(nextLanguage);
-      setLibraryPage(0);
-      setIsSearching(true);
-      setError(null);
-      const nextResults = await searchManga(nextQuery, nextLanguage);
-      setResults(nextResults);
-    } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : 'No se pudo buscar manga');
-    } finally {
-      setIsSearching(false);
-    }
-  }
+  }, [language, libraryPage, selectedCategoryId]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -134,6 +187,11 @@ export default function ReaderScreen() {
 
   function handleLanguageChange(nextLanguage: MangaLanguage) {
     setLanguage(nextLanguage);
+    setLibraryPage(0);
+  }
+
+  function handleCategoryChange(nextCategoryId: string | null) {
+    setSelectedCategoryId(nextCategoryId);
     setLibraryPage(0);
   }
 
@@ -227,6 +285,55 @@ export default function ReaderScreen() {
             </Pressable>
           ))}
         </View>
+
+        <View style={styles.filterBlock}>
+          <View style={styles.filterHeader}>
+            <ThemedText type="smallBold">Categorias</ThemedText>
+            {isLoadingCategories ? (
+              <ActivityIndicator color={theme.textSecondary} />
+            ) : (
+              <ThemedText type="code" themeColor="textSecondary">
+                {categories.length} FILTROS
+              </ThemedText>
+            )}
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryRow}>
+            <Pressable
+              onPress={() => handleCategoryChange(null)}
+              style={[
+                styles.categoryChip,
+                selectedCategoryId === null && styles.categoryChipSelected,
+              ]}>
+              <ThemedText type="smallBold" style={selectedCategoryId === null && styles.primaryButtonText}>
+                Todas
+              </ThemedText>
+            </Pressable>
+            {categories.map((category) => (
+              <Pressable
+                key={category.id}
+                onPress={() => handleCategoryChange(category.id)}
+                style={[
+                  styles.categoryChip,
+                  selectedCategoryId === category.id && styles.categoryChipSelected,
+                ]}>
+                <ThemedText
+                  type="smallBold"
+                  numberOfLines={1}
+                  style={selectedCategoryId === category.id && styles.primaryButtonText}>
+                  {category.name}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </ScrollView>
+          {categoryError && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {categoryError}
+            </ThemedText>
+          )}
+        </View>
       </ThemedView>
 
       {error && (
@@ -273,7 +380,9 @@ export default function ReaderScreen() {
       <Section title="Biblioteca">
         <View style={styles.libraryHeader}>
           <ThemedText type="small" themeColor="textSecondary">
-            Mangas populares con capitulos en {language.toUpperCase()}.
+            {selectedCategory
+              ? `${selectedCategory.name} con capitulos en ${language.toUpperCase()}.`
+              : `Mangas populares con capitulos en ${language.toUpperCase()}.`}
           </ThemedText>
           <View style={styles.libraryHeaderMeta}>
             {isLoadingLibrary && libraryMangas.length > 0 && <ActivityIndicator color={theme.textSecondary} />}
@@ -436,6 +545,30 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(120, 130, 150, 0.18)',
   },
   languageChipSelected: {
+    backgroundColor: '#2364d2',
+  },
+  filterBlock: {
+    gap: Spacing.two,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  categoryRow: {
+    gap: Spacing.two,
+    paddingRight: Spacing.three,
+  },
+  categoryChip: {
+    maxWidth: 180,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  categoryChipSelected: {
     backgroundColor: '#2364d2',
   },
   primaryButtonText: {

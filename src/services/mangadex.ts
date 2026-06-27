@@ -36,6 +36,16 @@ export type MangaLibraryPage = {
   offset: number;
 };
 
+export type MangaTag = {
+  id: string;
+  name: string;
+  group: string;
+};
+
+export type MangaFilters = {
+  tagId?: string;
+};
+
 export type ChapterPages = {
   baseUrl: string;
   hash: string;
@@ -71,6 +81,11 @@ type ChapterAttributes = {
   volume?: string;
   pages?: number;
   readableAt?: string;
+};
+
+type MangaTagAttributes = {
+  name?: Record<string, string>;
+  group?: string;
 };
 
 type MangaDexCollection<TAttributes> = {
@@ -166,6 +181,14 @@ function mapChapter(entity: MangaDexEntity<ChapterAttributes>): MangaChapter {
   };
 }
 
+function mapTag(entity: MangaDexEntity<MangaTagAttributes>, language: MangaLanguage): MangaTag {
+  return {
+    id: entity.id,
+    name: getLocalizedText(entity.attributes.name, language),
+    group: entity.attributes.group ?? '',
+  };
+}
+
 async function fetchJson<TResponse>(url: string) {
   const response = await fetch(url, {
     headers: {
@@ -180,18 +203,29 @@ async function fetchJson<TResponse>(url: string) {
   return (await response.json()) as TResponse;
 }
 
-export async function searchManga(title: string, language: MangaLanguage) {
+export async function searchManga(title: string, language: MangaLanguage, filters: MangaFilters = {}) {
   const url = buildUrl('/manga', {
     title: title.trim(),
     limit: '20',
     'includes[]': 'cover_art',
     'availableTranslatedLanguage[]': language,
     'contentRating[]': ['safe', 'suggestive'],
+    'includedTags[]': filters.tagId ?? '',
     'order[relevance]': 'desc',
   });
   const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);
 
   return data.data.map((entity) => mapManga(entity, language));
+}
+
+export async function getMangaTags(language: MangaLanguage) {
+  const data = await fetchJson<MangaDexCollection<MangaTagAttributes>>(buildUrl('/manga/tag', {}));
+
+  return data.data
+    .map((entity) => mapTag(entity, language))
+    .filter((tag) => tag.group === 'genre' || tag.group === 'theme')
+    .filter((tag) => tag.name)
+    .sort((first, second) => first.name.localeCompare(second.name));
 }
 
 export async function getMangaById(mangaId: string, language: MangaLanguage) {
@@ -217,7 +251,12 @@ export async function getPopularManga(language: MangaLanguage) {
   return data.data.map((entity) => mapManga(entity, language));
 }
 
-export async function getMangaLibrary(language: MangaLanguage, page = 0, limit = 15): Promise<MangaLibraryPage> {
+export async function getMangaLibrary(
+  language: MangaLanguage,
+  page = 0,
+  limit = 15,
+  filters: MangaFilters = {},
+): Promise<MangaLibraryPage> {
   const normalizedPage = Math.max(0, page);
   const normalizedLimit = Math.max(1, limit);
   const offset = normalizedPage * normalizedLimit;
@@ -228,6 +267,7 @@ export async function getMangaLibrary(language: MangaLanguage, page = 0, limit =
     'availableTranslatedLanguage[]': language,
     'contentRating[]': ['safe', 'suggestive'],
     hasAvailableChapters: 'true',
+    'includedTags[]': filters.tagId ?? '',
     'order[followedCount]': 'desc',
   });
   const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);

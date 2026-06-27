@@ -27,6 +27,9 @@ export default function AppTabs() {
           <TabTrigger name="reader" href="/reader" asChild>
             <TabButton>Explorar</TabButton>
           </TabTrigger>
+          <TabTrigger name="library" href="/library" asChild>
+            <TabButton>Mis mangas</TabButton>
+          </TabTrigger>
           <TabTrigger name="extensions" href="/extensions" asChild>
             <TabButton>Fuentes</TabButton>
           </TabTrigger>

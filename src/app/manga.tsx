@@ -25,6 +25,12 @@ import {
   type MangaLanguage,
   type MangaSearchResult,
 } from '@/services/mangadex';
+import {
+  getCurrentUser,
+  isMangaSaved,
+  removeSavedManga,
+  saveManga,
+} from '@/services/user-library';
 
 type ChapterOrder = 'asc' | 'desc';
 
@@ -68,7 +74,10 @@ export default function MangaScreen() {
   const [chapterOrder, setChapterOrder] = useState<ChapterOrder>('desc');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, refreshSavedState] = useState(0);
   const currentError = mangaId ? error : 'No se encontro el manga solicitado';
+  const currentUser = getCurrentUser();
+  const isSaved = Boolean(currentUser && mangaId && isMangaSaved(currentUser.id, mangaId));
 
   const displayedChapters = useMemo(
     () => (chapterOrder === 'desc' ? [...chapters].reverse() : chapters),
@@ -126,6 +135,26 @@ export default function MangaScreen() {
         language,
       },
     });
+  }
+
+  function toggleSavedManga() {
+    if (!manga || !mangaId) {
+      return;
+    }
+
+    if (!currentUser) {
+      router.push('/library');
+      return;
+    }
+
+    if (isSaved) {
+      removeSavedManga(currentUser.id, mangaId);
+      refreshSavedState((current) => current + 1);
+      return;
+    }
+
+    saveManga(currentUser.id, manga, language);
+    refreshSavedState((current) => current + 1);
   }
 
   return (
@@ -196,6 +225,17 @@ export default function MangaScreen() {
                     Capitulos {chapters.length}
                   </ThemedText>
                 </ThemedView>
+                <Pressable
+                  onPress={toggleSavedManga}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    isSaved && styles.saveButtonActive,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" style={isSaved ? styles.primaryButtonText : undefined}>
+                    {isSaved ? 'Guardado' : 'Guardar'}
+                  </ThemedText>
+                </Pressable>
               </View>
             </View>
           </ThemedView>
@@ -334,6 +374,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.one,
+  },
+  saveButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.one,
+    backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  saveButtonActive: {
+    backgroundColor: '#147d55',
   },
   pill: {
     minHeight: 24,
