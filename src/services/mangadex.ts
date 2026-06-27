@@ -29,6 +29,13 @@ export type MangaChapterFeed = {
   total: number;
 };
 
+export type MangaLibraryPage = {
+  mangas: MangaSearchResult[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type ChapterPages = {
   baseUrl: string;
   hash: string;
@@ -72,6 +79,11 @@ type MangaDexCollection<TAttributes> = {
   total?: number;
 };
 
+type MangaDexSingle<TAttributes> = {
+  result: string;
+  data: MangaDexEntity<TAttributes>;
+};
+
 type AtHomeResponse = {
   result: string;
   baseUrl: string;
@@ -81,6 +93,8 @@ type AtHomeResponse = {
     dataSaver: string[];
   };
 };
+
+const CHAPTER_FEED_LIMIT = 96;
 
 export const MANGA_LANGUAGES: { code: MangaLanguage; label: string }[] = [
   { code: 'es', label: 'Espanol' },
@@ -180,6 +194,15 @@ export async function searchManga(title: string, language: MangaLanguage) {
   return data.data.map((entity) => mapManga(entity, language));
 }
 
+export async function getMangaById(mangaId: string, language: MangaLanguage) {
+  const url = buildUrl(`/manga/${mangaId}`, {
+    'includes[]': 'cover_art',
+  });
+  const data = await fetchJson<MangaDexSingle<MangaAttributes>>(url);
+
+  return mapManga(data.data, language);
+}
+
 export async function getPopularManga(language: MangaLanguage) {
   const url = buildUrl('/manga', {
     limit: '20',
@@ -192,6 +215,29 @@ export async function getPopularManga(language: MangaLanguage) {
   const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);
 
   return data.data.map((entity) => mapManga(entity, language));
+}
+
+export async function getMangaLibrary(language: MangaLanguage, page = 0, limit = 15): Promise<MangaLibraryPage> {
+  const normalizedPage = Math.max(0, page);
+  const normalizedLimit = Math.max(1, limit);
+  const offset = normalizedPage * normalizedLimit;
+  const url = buildUrl('/manga', {
+    limit: String(normalizedLimit),
+    offset: String(offset),
+    'includes[]': 'cover_art',
+    'availableTranslatedLanguage[]': language,
+    'contentRating[]': ['safe', 'suggestive'],
+    hasAvailableChapters: 'true',
+    'order[followedCount]': 'desc',
+  });
+  const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);
+
+  return {
+    mangas: data.data.map((entity) => mapManga(entity, language)),
+    total: data.total ?? data.data.length,
+    limit: normalizedLimit,
+    offset,
+  };
 }
 
 export async function getRecentlyUpdatedManga(language: MangaLanguage) {
@@ -209,18 +255,36 @@ export async function getRecentlyUpdatedManga(language: MangaLanguage) {
 }
 
 export async function getMangaChapters(mangaId: string, language: MangaLanguage) {
-  const url = buildUrl(`/manga/${mangaId}/feed`, {
-    limit: '96',
-    'translatedLanguage[]': language,
-    'includes[]': 'scanlation_group',
-    'order[volume]': 'asc',
-    'order[chapter]': 'asc',
-  });
-  const data = await fetchJson<MangaDexCollection<ChapterAttributes>>(url);
+  const chapters: MangaChapter[] = [];
+  let offset = 0;
+  let total = CHAPTER_FEED_LIMIT;
+
+  while (offset < total) {
+    const url = buildUrl(`/manga/${mangaId}/feed`, {
+      limit: String(CHAPTER_FEED_LIMIT),
+      offset: String(offset),
+      'translatedLanguage[]': language,
+      'includes[]': 'scanlation_group',
+      'order[volume]': 'asc',
+      'order[chapter]': 'asc',
+    });
+    const data = await fetchJson<MangaDexCollection<ChapterAttributes>>(url);
+
+    total = data.total ?? chapters.length + data.data.length;
+    chapters.push(...data.data.map(mapChapter));
+
+    if (data.data.length === 0) {
+      break;
+    }
+
+    offset += data.data.length;
+  }
+
+  const readableChapters = chapters.filter((chapter) => chapter.pages > 0);
 
   return {
-    chapters: data.data.map(mapChapter).filter((chapter) => chapter.pages > 0),
-    total: data.total ?? data.data.length,
+    chapters: readableChapters,
+    total: readableChapters.length,
   } satisfies MangaChapterFeed;
 }
 

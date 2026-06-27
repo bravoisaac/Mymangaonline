@@ -33,6 +33,16 @@ export default function AppTabs() {
           <TabTrigger name="explore" href="/explore" asChild>
             <TabButton>API</TabButton>
           </TabTrigger>
+          <TabTrigger name="manga" href="/manga" asChild>
+            <Pressable style={styles.hiddenTab}>
+              <View />
+            </Pressable>
+          </TabTrigger>
+          <TabTrigger name="chapter" href="/chapter" asChild>
+            <Pressable style={styles.hiddenTab}>
+              <View />
+            </Pressable>
+          </TabTrigger>
         </CustomTabList>
       </TabList>
     </Tabs>
@@ -117,5 +127,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
     marginLeft: Spacing.three,
+  },
+  hiddenTab: {
+    display: 'none',
   },
 });

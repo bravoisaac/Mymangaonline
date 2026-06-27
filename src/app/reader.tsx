@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,18 +19,16 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  getMangaLibrary,
   MANGADEX_API_URL,
   MANGA_LANGUAGES,
-  getChapterPages,
-  getMangaChapters,
   searchManga,
-  type ChapterPages,
-  type MangaChapter,
   type MangaLanguage,
   type MangaSearchResult,
 } from '@/services/mangadex';
 
 const INITIAL_QUERY = 'one piece';
+const LIBRARY_PAGE_SIZE = 15;
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -46,20 +44,22 @@ export default function ReaderScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
   const [query, setQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
   const [results, setResults] = useState<MangaSearchResult[]>([]);
-  const [selectedManga, setSelectedManga] = useState<MangaSearchResult | null>(null);
-  const [chapters, setChapters] = useState<MangaChapter[]>([]);
-  const [chapterTotal, setChapterTotal] = useState(0);
-  const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
-  const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [isLoadingChapters, setIsLoadingChapters] = useState(false);
-  const [isLoadingPages, setIsLoadingPages] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [libraryMangas, setLibraryMangas] = useState<MangaSearchResult[]>([]);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const [libraryPage, setLibraryPage] = useState(0);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const autoSearch = getParam(params.autoSearch);
+  const libraryPageCount = Math.max(1, Math.ceil(libraryTotal / LIBRARY_PAGE_SIZE));
+  const canGoToPreviousLibraryPage = libraryPage > 0 && !isLoadingLibrary;
+  const canGoToNextLibraryPage = libraryPage + 1 < libraryPageCount && !isLoadingLibrary;
 
   const contentInset = useMemo(
     () => ({
@@ -77,6 +77,37 @@ export default function ReaderScreen() {
     }
   }, [autoSearch, initialQuery, params.language]);
 
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    async function loadLibraryPage() {
+      try {
+        setIsLoadingLibrary(true);
+        setLibraryError(null);
+        const nextPage = await getMangaLibrary(language, libraryPage, LIBRARY_PAGE_SIZE);
+
+        if (isCurrentRequest) {
+          setLibraryMangas(nextPage.mangas);
+          setLibraryTotal(nextPage.total);
+        }
+      } catch (loadError) {
+        if (isCurrentRequest) {
+          setLibraryError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la biblioteca');
+        }
+      } finally {
+        if (isCurrentRequest) {
+          setIsLoadingLibrary(false);
+        }
+      }
+    }
+
+    void loadLibraryPage();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [language, libraryPage]);
+
   async function runSearch(nextQuery: string, nextLanguage: MangaLanguage) {
     if (!nextQuery.trim()) {
       return;
@@ -85,13 +116,9 @@ export default function ReaderScreen() {
     try {
       setQuery(nextQuery);
       setLanguage(nextLanguage);
+      setLibraryPage(0);
       setIsSearching(true);
       setError(null);
-      setSelectedManga(null);
-      setSelectedChapter(null);
-      setChapterPages(null);
-      setChapters([]);
-      setChapterTotal(0);
       const nextResults = await searchManga(nextQuery, nextLanguage);
       setResults(nextResults);
     } catch (searchError) {
@@ -105,36 +132,27 @@ export default function ReaderScreen() {
     await runSearch(query, language);
   }
 
-  async function handleSelectManga(manga: MangaSearchResult) {
-    try {
-      setSelectedManga(manga);
-      setSelectedChapter(null);
-      setChapterPages(null);
-      setChapterTotal(0);
-      setIsLoadingChapters(true);
-      setError(null);
-      const chapterFeed = await getMangaChapters(manga.id, language);
-      setChapters(chapterFeed.chapters);
-      setChapterTotal(chapterFeed.total);
-    } catch (chapterError) {
-      setError(chapterError instanceof Error ? chapterError.message : 'No se cargaron capitulos');
-    } finally {
-      setIsLoadingChapters(false);
-    }
+  function handleLanguageChange(nextLanguage: MangaLanguage) {
+    setLanguage(nextLanguage);
+    setLibraryPage(0);
   }
 
-  async function handleSelectChapter(chapter: MangaChapter) {
-    try {
-      setSelectedChapter(chapter);
-      setIsLoadingPages(true);
-      setError(null);
-      const nextPages = await getChapterPages(chapter.id);
-      setChapterPages(nextPages);
-    } catch (pageError) {
-      setError(pageError instanceof Error ? pageError.message : 'No se cargaron paginas');
-    } finally {
-      setIsLoadingPages(false);
-    }
+  function openPreviousLibraryPage() {
+    setLibraryPage((currentPage) => Math.max(0, currentPage - 1));
+  }
+
+  function openNextLibraryPage() {
+    setLibraryPage((currentPage) => Math.min(libraryPageCount - 1, currentPage + 1));
+  }
+
+  function openManga(manga: MangaSearchResult) {
+    router.push({
+      pathname: '/manga',
+      params: {
+        mangaId: manga.id,
+        language,
+      },
+    });
   }
 
   return (
@@ -152,10 +170,10 @@ export default function ReaderScreen() {
       showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <ThemedText type="title" style={styles.title}>
-          Leer manga
+          Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
-          Busca en MangaDex, selecciona idioma, abre capitulos y lee las paginas dentro de la app.
+          Busca en MangaDex o abre un manga desde la biblioteca para elegir capitulos.
         </ThemedText>
       </View>
 
@@ -193,7 +211,7 @@ export default function ReaderScreen() {
           {MANGA_LANGUAGES.map((item) => (
             <Pressable
               key={item.code}
-              onPress={() => setLanguage(item.code)}
+              onPress={() => handleLanguageChange(item.code)}
               style={[
                 styles.languageChip,
                 language === item.code && styles.languageChipSelected,
@@ -232,18 +250,13 @@ export default function ReaderScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.resultList}
             renderItem={({ item }) => (
-              <Pressable
-                onPress={() => handleSelectManga(item)}
-                style={[
-                  styles.mangaCard,
-                  selectedManga?.id === item.id && styles.mangaCardSelected,
-                ]}>
+              <Pressable onPress={() => openManga(item)} style={({ pressed }) => [styles.mangaCard, pressed && styles.pressed]}>
                 <Image source={{ uri: item.coverUrl }} style={styles.cover} contentFit="cover" />
                 <View style={styles.mangaInfo}>
                   <ThemedText type="smallBold" numberOfLines={2}>
                     {item.title}
                   </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={4}>
                     {item.description || 'Sin descripcion disponible.'}
                   </ThemedText>
                   <View style={styles.mangaMeta}>
@@ -257,79 +270,86 @@ export default function ReaderScreen() {
         </Section>
       )}
 
-      {selectedManga && (
-        <Section title={`Capitulos - ${selectedManga.title}`}>
-          {isLoadingChapters ? (
-            <LoadingRow label="Cargando capitulos..." />
-          ) : chapters.length > 0 ? (
-            <>
-              <ThemedView type="backgroundElement" style={styles.chapterSummary}>
-                <View>
-                  <ThemedText type="subtitle" style={styles.chapterTotal}>
-                    {chapterTotal}
-                  </ThemedText>
-                  <ThemedText type="code" themeColor="textSecondary">
-                    CAPITULOS DISPONIBLES
-                  </ThemedText>
-                </View>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.chapterSummaryText}>
-                  Mostrando {chapters.length} capitulos cargados en {language.toUpperCase()}.
-                </ThemedText>
-              </ThemedView>
-              <View style={styles.chapterList}>
-                {chapters.map((chapter) => (
-                  <Pressable
-                    key={chapter.id}
-                    onPress={() => handleSelectChapter(chapter)}
-                    style={[
-                      styles.chapterRow,
-                      selectedChapter?.id === chapter.id && styles.chapterRowSelected,
-                    ]}>
-                    <View style={styles.chapterInfo}>
-                      <ThemedText type="smallBold" numberOfLines={1}>
-                        Capitulo {chapter.chapter}
-                        {chapter.title ? ` - ${chapter.title}` : ''}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                        {chapter.pages} paginas
-                        {chapter.groupName ? ` - ${chapter.groupName}` : ''}
-                      </ThemedText>
-                    </View>
-                    <ThemedText type="code" themeColor="textSecondary">
-                      Leer
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          ) : (
-            <EmptyText text="No hay capitulos disponibles en este idioma." />
-          )}
-        </Section>
-      )}
+      <Section title="Biblioteca">
+        <View style={styles.libraryHeader}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Mangas populares con capitulos en {language.toUpperCase()}.
+          </ThemedText>
+          <View style={styles.libraryHeaderMeta}>
+            {isLoadingLibrary && libraryMangas.length > 0 && <ActivityIndicator color={theme.textSecondary} />}
+            <ThemedText type="code" themeColor="textSecondary">
+              {LIBRARY_PAGE_SIZE} POR PAGINA
+            </ThemedText>
+          </View>
+        </View>
 
-      {selectedChapter && (
-        <Section title={`Lector - Capitulo ${selectedChapter.chapter}`}>
-          {isLoadingPages ? (
-            <LoadingRow label="Cargando paginas..." />
-          ) : chapterPages ? (
-            <View style={styles.reader}>
-              {chapterPages.pageUrls.map((pageUrl, index) => (
-                <Image
-                  key={pageUrl}
-                  source={{ uri: pageUrl }}
-                  style={styles.readerPage}
-                  contentFit="contain"
-                  transition={180}
-                  recyclingKey={`${selectedChapter.id}-${index}`}
-                />
-              ))}
-            </View>
-          ) : (
-            <EmptyText text="Selecciona un capitulo para cargar paginas." />
-          )}
-        </Section>
-      )}
+        {libraryError && (
+          <ThemedView type="backgroundElement" style={styles.libraryMessagePanel}>
+            <ThemedText type="smallBold">No se pudo cargar la biblioteca</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {libraryError}
+            </ThemedText>
+          </ThemedView>
+        )}
+
+        {isLoadingLibrary && libraryMangas.length === 0 ? (
+          <ThemedView type="backgroundElement" style={styles.libraryLoadingPanel}>
+            <ActivityIndicator color={theme.textSecondary} />
+            <ThemedText type="small" themeColor="textSecondary">
+              Cargando biblioteca...
+            </ThemedText>
+          </ThemedView>
+        ) : (
+          <View style={styles.libraryGrid}>
+            {libraryMangas.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => openManga(item)}
+                style={({ pressed }) => [styles.libraryCard, pressed && styles.pressed]}>
+                <Image source={{ uri: item.coverUrl }} style={styles.libraryCover} contentFit="cover" />
+                <View style={styles.libraryInfo}>
+                  <ThemedText type="smallBold" numberOfLines={2}>
+                    {item.title}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
+                    {item.description || 'Sin descripcion disponible.'}
+                  </ThemedText>
+                  <View style={styles.mangaMeta}>
+                    {item.year && <Pill text={String(item.year)} />}
+                    {item.status && <Pill text={item.status} />}
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.paginationRow}>
+          <Pressable
+            disabled={!canGoToPreviousLibraryPage}
+            onPress={openPreviousLibraryPage}
+            style={({ pressed }) => [
+              styles.paginationButton,
+              !canGoToPreviousLibraryPage && styles.disabled,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold">{'<'} Anterior</ThemedText>
+          </Pressable>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.paginationStatus}>
+            Pagina {libraryPage + 1} de {libraryPageCount}
+          </ThemedText>
+          <Pressable
+            disabled={!canGoToNextLibraryPage}
+            onPress={openNextLibraryPage}
+            style={({ pressed }) => [
+              styles.paginationButton,
+              !canGoToNextLibraryPage && styles.disabled,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold">Siguiente {'>'}</ThemedText>
+          </Pressable>
+        </View>
+      </Section>
     </ScrollView>
   );
 }
@@ -352,29 +372,6 @@ function Pill({ text }: { text: string }) {
         {text.toUpperCase()}
       </ThemedText>
     </View>
-  );
-}
-
-function LoadingRow({ label }: { label: string }) {
-  const theme = useTheme();
-
-  return (
-    <ThemedView type="backgroundElement" style={styles.loadingRow}>
-      <ActivityIndicator color={theme.text} />
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-    </ThemedView>
-  );
-}
-
-function EmptyText({ text }: { text: string }) {
-  return (
-    <ThemedView type="backgroundElement" style={styles.loadingRow}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {text}
-      </ThemedText>
-    </ThemedView>
   );
 }
 
@@ -454,22 +451,91 @@ const styles = StyleSheet.create({
   resultList: {
     gap: Spacing.two,
   },
+  libraryHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  libraryHeaderMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  libraryMessagePanel: {
+    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    borderLeftWidth: 4,
+    borderLeftColor: '#b72d3b',
+  },
+  libraryLoadingPanel: {
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+  },
+  libraryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  libraryCard: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 180,
+    maxWidth: 256,
+    gap: Spacing.two,
+    padding: Spacing.two,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(120, 130, 150, 0.14)',
+  },
+  libraryCover: {
+    width: '100%',
+    aspectRatio: 2 / 3,
+    borderRadius: Spacing.one,
+    backgroundColor: 'rgba(120, 130, 150, 0.2)',
+  },
+  libraryInfo: {
+    flex: 1,
+    minHeight: 116,
+    gap: Spacing.one,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  paginationButton: {
+    minWidth: 124,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  paginationStatus: {
+    minWidth: 132,
+    textAlign: 'center',
+  },
   mangaCard: {
-    width: 260,
-    minHeight: 180,
+    width: 280,
+    minHeight: 188,
     flexDirection: 'row',
     gap: Spacing.two,
     padding: Spacing.two,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
   },
-  mangaCardSelected: {
-    borderWidth: 2,
-    borderColor: '#2364d2',
-  },
   cover: {
-    width: 86,
-    height: 130,
+    width: 92,
+    height: 138,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
@@ -490,62 +556,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.18)',
-  },
-  chapterSummary: {
-    minHeight: 86,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
-  },
-  chapterTotal: {
-    fontSize: 28,
-    lineHeight: 34,
-  },
-  chapterSummaryText: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
-  },
-  chapterList: {
-    gap: Spacing.two,
-  },
-  chapterRow: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
-  },
-  chapterRowSelected: {
-    borderWidth: 2,
-    borderColor: '#2364d2',
-  },
-  chapterInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  reader: {
-    gap: Spacing.three,
-  },
-  readerPage: {
-    width: '100%',
-    aspectRatio: 720 / 1040,
-    borderRadius: Spacing.one,
-    backgroundColor: '#111111',
-  },
-  loadingRow: {
-    minHeight: 68,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
   },
   errorPanel: {
     gap: Spacing.two,
