@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -16,12 +16,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { getMangaChapters, type MangaChapter } from '@/services/mangadex';
 import {
   createEmailAccount,
   getCurrentUser,
   getSavedMangas,
+  getViewedChapterHistory,
   loginWithEmail,
-  loginWithGoogleProfile,
   logoutUser,
   removeSavedManga,
   type LocalUser,
@@ -29,72 +30,27 @@ import {
 } from '@/services/user-library';
 
 type AuthMode = 'login' | 'create';
-
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-const GOOGLE_IDENTITY_SCRIPT_ID = 'google-identity-services';
-
-type GoogleTokenResponse = {
-  access_token?: string;
+type MangaProgress = {
+  chapterCount: number;
+  latestChapter?: MangaChapter;
+  lastViewedChapter?: MangaChapter;
+  hasNewChapter: boolean;
+  updatedAt: string;
   error?: string;
-  error_description?: string;
 };
 
-type GoogleUserInfo = {
-  sub?: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-};
+function getTime(value: string | undefined) {
+  const time = value ? new Date(value).getTime() : 0;
 
-type GoogleTokenClient = {
-  requestAccessToken: (overrideConfig?: { prompt?: string }) => void;
-};
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initTokenClient: (config: {
-            client_id: string;
-            scope: string;
-            callback: (response: GoogleTokenResponse) => void;
-          }) => GoogleTokenClient;
-        };
-      };
-    };
-  }
+  return Number.isNaN(time) ? 0 : time;
 }
 
-function loadGoogleIdentityServices() {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') {
-    return Promise.reject(new Error('Google solo esta disponible en navegador web'));
+function getChapterLabel(chapter: MangaChapter | undefined) {
+  if (!chapter) {
+    return 'Sin leer';
   }
 
-  if (window.google?.accounts?.oauth2) {
-    return Promise.resolve();
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    const existingScript = document.getElementById(GOOGLE_IDENTITY_SCRIPT_ID);
-
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(), { once: true });
-      existingScript.addEventListener('error', () => reject(new Error('No se pudo cargar Google')), { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-
-    script.id = GOOGLE_IDENTITY_SCRIPT_ID;
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('No se pudo cargar Google'));
-
-    document.head.appendChild(script);
-  });
+  return `Capitulo ${chapter.chapter}`;
 }
 
 export default function LibraryScreen() {
@@ -107,11 +63,10 @@ export default function LibraryScreen() {
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
   const [savedMangas, setSavedMangas] = useState<SavedManga[]>(() => (user ? getSavedMangas(user.id) : []));
+  const [progressByMangaId, setProgressByMangaId] = useState<Record<string, MangaProgress>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGoogleReady, setIsGoogleReady] = useState(false);
-  const [googleStatus, setGoogleStatus] = useState<string | null>(null);
-  const [googleTokenClient, setGoogleTokenClient] = useState<GoogleTokenClient | null>(null);
+  const [isLoadingProgress, setIsLoadingProgress] = useState(false);
 
   const contentInset = useMemo(
     () => ({
@@ -122,6 +77,113 @@ export default function LibraryScreen() {
     }),
     [safeAreaInsets],
   );
+
+  const displayedSavedMangas = useMemo(
+    () =>
+      [...savedMangas].sort((firstManga, secondManga) => {
+        const firstProgress = progressByMangaId[firstManga.id];
+        const secondProgress = progressByMangaId[secondManga.id];
+
+        if (Boolean(firstProgress?.hasNewChapter) !== Boolean(secondProgress?.hasNewChapter)) {
+          return firstProgress?.hasNewChapter ? -1 : 1;
+        }
+
+        return (
+          getTime(secondProgress?.updatedAt ?? secondManga.savedAt) -
+          getTime(firstProgress?.updatedAt ?? firstManga.savedAt)
+        );
+      }),
+    [progressByMangaId, savedMangas],
+  );
+
+  useEffect(() => {
+    if (!user || savedMangas.length === 0) {
+      return;
+    }
+
+    let isCurrentRequest = true;
+
+    async function loadProgress() {
+      await Promise.resolve();
+
+      if (!isCurrentRequest) {
+        return;
+      }
+
+      setIsLoadingProgress(true);
+
+      try {
+        const progressEntries = await Promise.all(
+          savedMangas.map(async (manga) => {
+            try {
+              const chapterFeed = await getMangaChapters(manga.id, manga.language);
+              const viewedHistory = getViewedChapterHistory(manga.id, manga.language);
+              const latestChapter = chapterFeed.chapters.at(-1);
+              let lastViewedAt = '';
+              let lastViewedChapter: MangaChapter | undefined;
+              let highestViewedIndex = -1;
+
+              chapterFeed.chapters.forEach((chapter, chapterIndex) => {
+                const viewedAt = viewedHistory[chapter.id];
+
+                if (!viewedAt) {
+                  return;
+                }
+
+                if (viewedAt > lastViewedAt) {
+                  lastViewedAt = viewedAt;
+                  lastViewedChapter = chapter;
+                }
+
+                highestViewedIndex = Math.max(highestViewedIndex, chapterIndex);
+              });
+
+              return [
+                manga.id,
+                {
+                  chapterCount: chapterFeed.chapters.length,
+                  latestChapter,
+                  lastViewedChapter,
+                  hasNewChapter:
+                    Boolean(latestChapter) &&
+                    highestViewedIndex >= 0 &&
+                    highestViewedIndex < chapterFeed.chapters.length - 1,
+                  updatedAt: latestChapter?.readableAt ?? manga.savedAt,
+                } satisfies MangaProgress,
+              ] as const;
+            } catch (progressError) {
+              return [
+                manga.id,
+                {
+                  chapterCount: 0,
+                  hasNewChapter: false,
+                  updatedAt: manga.savedAt,
+                  error:
+                    progressError instanceof Error
+                      ? progressError.message
+                      : 'No se pudo cargar progreso',
+                } satisfies MangaProgress,
+              ] as const;
+            }
+          }),
+        );
+
+        if (isCurrentRequest) {
+          setProgressByMangaId(Object.fromEntries(progressEntries));
+        }
+      } finally {
+        if (isCurrentRequest) {
+          setIsLoadingProgress(false);
+        }
+      }
+    }
+
+    void loadProgress();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [savedMangas, user]);
 
   async function handleEmailSubmit() {
     try {
@@ -140,111 +202,6 @@ export default function LibraryScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  const handleGoogleToken = useCallback(async (response: GoogleTokenResponse) => {
-    try {
-      if (response.error) {
-        throw new Error(response.error_description || response.error);
-      }
-
-      if (!response.access_token) {
-        throw new Error('Google no devolvio acceso a la cuenta');
-      }
-
-      const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
-        headers: {
-          Authorization: `Bearer ${response.access_token}`,
-        },
-      });
-
-      if (!profileResponse.ok) {
-        throw new Error('No se pudo leer el perfil de Google');
-      }
-
-      const profile = (await profileResponse.json()) as GoogleUserInfo;
-
-      if (!profile.email) {
-        throw new Error('La cuenta de Google no entrego correo');
-      }
-
-      const nextUser = loginWithGoogleProfile({
-        email: profile.email,
-        name: profile.name,
-        pictureUrl: profile.picture,
-        googleId: profile.sub,
-      });
-
-      setUser(nextUser);
-      setName(nextUser.name);
-      setEmail(nextUser.email);
-      setSavedMangas(getSavedMangas(nextUser.id));
-      setGoogleStatus('Cuenta de Google conectada');
-      setError(null);
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'No se pudo entrar con Google');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user || !GOOGLE_CLIENT_ID || Platform.OS !== 'web') {
-      return;
-    }
-
-    let isCurrentRequest = true;
-    const googleClientId = GOOGLE_CLIENT_ID;
-
-    async function connectGoogle() {
-      try {
-        await loadGoogleIdentityServices();
-
-        if (!isCurrentRequest || !window.google?.accounts?.oauth2) {
-          return;
-        }
-
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: googleClientId,
-          scope: 'openid email profile',
-          callback: (response) => {
-            void handleGoogleToken(response);
-          },
-        });
-
-        setGoogleTokenClient(tokenClient);
-        setIsGoogleReady(true);
-        setGoogleStatus('Google listo para abrir la autenticacion');
-      } catch (googleError) {
-        if (isCurrentRequest) {
-          setGoogleStatus(googleError instanceof Error ? googleError.message : 'No se pudo cargar Google');
-        }
-      }
-    }
-
-    void connectGoogle();
-
-    return () => {
-      isCurrentRequest = false;
-    };
-  }, [handleGoogleToken, user]);
-
-  function handleGoogleLogin() {
-    if (!GOOGLE_CLIENT_ID) {
-      setError('Configura EXPO_PUBLIC_GOOGLE_CLIENT_ID para entrar con Google real');
-      return;
-    }
-
-    if (Platform.OS !== 'web') {
-      setError('El login con Google esta disponible en navegador web');
-      return;
-    }
-
-    if (!isGoogleReady || !googleTokenClient) {
-      setError('Google todavia esta cargando. Intenta de nuevo en unos segundos.');
-      return;
-    }
-
-    setError(null);
-    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
   }
 
   function handleLogout() {
@@ -385,33 +342,6 @@ export default function LibraryScreen() {
               </ThemedText>
             )}
           </Pressable>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <ThemedText type="code" themeColor="textSecondary">
-              O
-            </ThemedText>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <Pressable
-            onPress={handleGoogleLogin}
-            style={({ pressed }) => [
-              styles.googleButton,
-              !GOOGLE_CLIENT_ID && styles.disabled,
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText type="smallBold">Entrar con Google</ThemedText>
-          </Pressable>
-
-          <ThemedText type="small" themeColor="textSecondary">
-            {GOOGLE_CLIENT_ID
-              ? googleStatus ?? 'Google abrira una ventana y creara el usuario con la cuenta elegida.'
-              : 'Falta EXPO_PUBLIC_GOOGLE_CLIENT_ID para conectar Google real.'}
-          </ThemedText>
-          <ThemedText type="code" themeColor="textSecondary">
-            GOOGLE CREA EL USUARIO AUTOMATICAMENTE
-          </ThemedText>
         </ThemedView>
       ) : (
         <>
@@ -423,11 +353,16 @@ export default function LibraryScreen() {
               <View style={styles.userInfo}>
                 <ThemedText type="smallBold">Usuario: {user.name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {user.email} - {user.provider === 'google' ? 'Google' : 'Correo'}
+                  {user.email} - Correo
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {savedMangas.length} mangas guardados
                 </ThemedText>
+                {isLoadingProgress && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Actualizando capitulos...
+                  </ThemedText>
+                )}
               </View>
             </View>
             <Pressable onPress={handleLogout} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
@@ -439,33 +374,85 @@ export default function LibraryScreen() {
 
           {savedMangas.length > 0 ? (
             <View style={styles.libraryGrid}>
-              {savedMangas.map((manga) => (
-                <ThemedView key={manga.id} type="backgroundElement" style={styles.mangaCard}>
-                  <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
-                    <Image source={{ uri: manga.coverUrl }} style={styles.cover} contentFit="cover" />
-                  </Pressable>
-                  <View style={styles.mangaInfo}>
+              {displayedSavedMangas.map((manga) => {
+                const progress = progressByMangaId[manga.id];
+
+                return (
+                  <ThemedView key={manga.id} type="backgroundElement" style={styles.mangaCard}>
                     <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
-                      <ThemedText type="smallBold" numberOfLines={2}>
-                        {manga.title || 'Sin titulo'}
-                      </ThemedText>
+                      <Image source={{ uri: manga.coverUrl }} style={styles.cover} contentFit="cover" />
                     </Pressable>
-                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
-                      {manga.description || 'Sin descripcion disponible.'}
-                    </ThemedText>
-                    <View style={styles.cardFooter}>
-                      <View style={styles.pill}>
-                        <ThemedText type="code" themeColor="textSecondary">
-                          {manga.language.toUpperCase()}
+                    <View style={styles.mangaInfo}>
+                      <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
+                        <ThemedText type="smallBold" numberOfLines={2}>
+                          {manga.title || 'Sin titulo'}
                         </ThemedText>
-                      </View>
-                      <Pressable onPress={() => removeManga(manga.id)} style={({ pressed }) => pressed && styles.pressed}>
-                        <ThemedText type="linkPrimary">Quitar</ThemedText>
                       </Pressable>
+                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
+                        {manga.description || 'Sin descripcion disponible.'}
+                      </ThemedText>
+
+                      <View style={styles.progressPanel}>
+                        {progress ? (
+                          <>
+                            <View style={styles.progressRow}>
+                              <ThemedText type="code" themeColor="textSecondary">
+                                CAPITULOS
+                              </ThemedText>
+                              <ThemedText type="smallBold">
+                                {progress.error ? '--' : progress.chapterCount}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.progressRow}>
+                              <ThemedText type="code" themeColor="textSecondary">
+                                ULTIMO VISTO
+                              </ThemedText>
+                              <ThemedText type="smallBold" numberOfLines={1}>
+                                {getChapterLabel(progress.lastViewedChapter)}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.progressRow}>
+                              <ThemedText type="code" themeColor="textSecondary">
+                                DISPONIBLE
+                              </ThemedText>
+                              <ThemedText type="smallBold" numberOfLines={1}>
+                                {getChapterLabel(progress.latestChapter)}
+                              </ThemedText>
+                            </View>
+                            {progress.hasNewChapter && (
+                              <View style={styles.newChapterPill}>
+                                <ThemedText type="code" style={styles.newChapterText}>
+                                  NUEVO CAPITULO
+                                </ThemedText>
+                              </View>
+                            )}
+                            {progress.error && (
+                              <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                                {progress.error}
+                              </ThemedText>
+                            )}
+                          </>
+                        ) : (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            Cargando capitulos...
+                          </ThemedText>
+                        )}
+                      </View>
+
+                      <View style={styles.cardFooter}>
+                        <View style={styles.pill}>
+                          <ThemedText type="code" themeColor="textSecondary">
+                            {manga.language.toUpperCase()}
+                          </ThemedText>
+                        </View>
+                        <Pressable onPress={() => removeManga(manga.id)} style={({ pressed }) => pressed && styles.pressed}>
+                          <ThemedText type="linkPrimary">Quitar</ThemedText>
+                        </Pressable>
+                      </View>
                     </View>
-                  </View>
-                </ThemedView>
-              ))}
+                  </ThemedView>
+                );
+              })}
             </View>
           ) : (
             <ThemedView type="backgroundElement" style={styles.emptyPanel}>
@@ -552,26 +539,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#ffffff',
   },
-  googleButton: {
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(120, 130, 150, 0.24)',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(120, 130, 150, 0.22)',
-  },
   secondaryButton: {
     minHeight: 44,
     alignItems: 'center',
@@ -627,8 +594,31 @@ const styles = StyleSheet.create({
   },
   mangaInfo: {
     flex: 1,
-    minHeight: 128,
+    minHeight: 224,
     gap: Spacing.one,
+  },
+  progressPanel: {
+    gap: Spacing.one,
+    padding: Spacing.two,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(120, 130, 150, 0.12)',
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  newChapterPill: {
+    minHeight: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.one,
+    backgroundColor: '#147d55',
+  },
+  newChapterText: {
+    color: '#ffffff',
   },
   cardFooter: {
     marginTop: 'auto',

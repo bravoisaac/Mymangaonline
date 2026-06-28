@@ -3,8 +3,9 @@ import type { MangaLanguage, MangaSearchResult } from './mangadex';
 const ACCOUNTS_KEY = 'mymangaonline.accounts';
 const CURRENT_USER_KEY = 'mymangaonline.currentUser';
 const LIBRARY_KEY_PREFIX = 'mymangaonline.library.';
+const VIEWED_CHAPTERS_KEY_PREFIX = 'mymangaonline.viewedChapters.';
 
-export type AuthProvider = 'email' | 'google';
+export type AuthProvider = 'email';
 
 export type LocalUser = {
   id: string;
@@ -16,16 +17,8 @@ export type LocalUser = {
 };
 
 type LocalAccount = LocalUser & {
-  googleId?: string;
   passwordHash?: string;
   updatedAt: string;
-};
-
-export type GoogleLoginProfile = {
-  email: string;
-  name?: string;
-  pictureUrl?: string;
-  googleId?: string;
 };
 
 export type SavedManga = MangaSearchResult & {
@@ -51,6 +44,18 @@ function normalizeUserId(email: string) {
 
 function getLibraryKey(userId: string) {
   return `${LIBRARY_KEY_PREFIX}${encodeURIComponent(userId)}`;
+}
+
+function getViewedChaptersKey(userId: string) {
+  return `${VIEWED_CHAPTERS_KEY_PREFIX}${encodeURIComponent(userId)}`;
+}
+
+function getChapterHistoryKey(mangaId: string, chapterId: string, language: MangaLanguage) {
+  return `${mangaId}:${language}:${chapterId}`;
+}
+
+function getCurrentViewerId() {
+  return getCurrentUser()?.id ?? 'guest';
 }
 
 function readJson<TValue>(key: string, fallback: TValue): TValue {
@@ -142,7 +147,7 @@ async function hashPassword(password: string, email: string) {
 export function getCurrentUser() {
   const user = readJson<LocalUser | null>(CURRENT_USER_KEY, null);
 
-  if (!user?.id || !user.email) {
+  if (!user?.id || !user.email || user.provider !== 'email') {
     return null;
   }
 
@@ -210,38 +215,6 @@ export async function loginWithEmail(email: string, password: string) {
   return user;
 }
 
-export function loginWithGoogleProfile(profile: GoogleLoginProfile) {
-  const normalizedEmail = validateEmail(profile.email);
-  const accounts = getAccounts();
-  const existingAccount = accounts.find((account) => account.email === normalizedEmail);
-  const now = new Date().toISOString();
-  const account: LocalAccount = existingAccount
-    ? {
-        ...existingAccount,
-        name: profile.name?.trim() || existingAccount.name,
-        provider: 'google',
-        googleId: profile.googleId ?? existingAccount.googleId,
-        pictureUrl: profile.pictureUrl ?? existingAccount.pictureUrl,
-        updatedAt: now,
-      }
-    : {
-        id: normalizeUserId(normalizedEmail),
-        name: profile.name?.trim() || normalizedEmail.split('@')[0],
-        email: normalizedEmail,
-        provider: 'google',
-        googleId: profile.googleId,
-        pictureUrl: profile.pictureUrl,
-        createdAt: now,
-        updatedAt: now,
-      };
-  const user = toPublicUser(account, 'google');
-
-  saveAccounts([account, ...accounts.filter((item) => item.email !== normalizedEmail)]);
-  setCurrentUser(user);
-
-  return user;
-}
-
 export function logoutUser() {
   const storage = getStorage();
 
@@ -283,4 +256,47 @@ export function removeSavedManga(userId: string, mangaId: string) {
   writeJson(getLibraryKey(userId), nextSavedMangas);
 
   return nextSavedMangas;
+}
+
+export function markChapterViewed(mangaId: string, chapterId: string, language: MangaLanguage) {
+  const viewerId = getCurrentViewerId();
+  const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});
+  const chapterHistoryKey = getChapterHistoryKey(mangaId, chapterId, language);
+
+  viewedChapters[chapterHistoryKey] = new Date().toISOString();
+  writeJson(getViewedChaptersKey(viewerId), viewedChapters);
+
+  return viewedChapters[chapterHistoryKey];
+}
+
+export function getViewedChapterIds(mangaId: string, language: MangaLanguage) {
+  const viewerId = getCurrentViewerId();
+  const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});
+  const chapterPrefix = `${mangaId}:${language}:`;
+
+  return Object.keys(viewedChapters)
+    .filter((chapterHistoryKey) => chapterHistoryKey.startsWith(chapterPrefix))
+    .map((chapterHistoryKey) => chapterHistoryKey.slice(chapterPrefix.length));
+}
+
+export function getViewedChapterHistory(mangaId: string, language: MangaLanguage) {
+  const viewerId = getCurrentViewerId();
+  const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});
+  const chapterPrefix = `${mangaId}:${language}:`;
+
+  return Object.fromEntries(
+    Object.entries(viewedChapters)
+      .filter(([chapterHistoryKey]) => chapterHistoryKey.startsWith(chapterPrefix))
+      .map(([chapterHistoryKey, viewedAt]) => [
+        chapterHistoryKey.slice(chapterPrefix.length),
+        viewedAt,
+      ]),
+  ) as Record<string, string>;
+}
+
+export function isChapterViewed(mangaId: string, chapterId: string, language: MangaLanguage) {
+  const viewerId = getCurrentViewerId();
+  const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});
+
+  return Boolean(viewedChapters[getChapterHistoryKey(mangaId, chapterId, language)]);
 }

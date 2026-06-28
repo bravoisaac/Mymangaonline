@@ -27,7 +27,9 @@ import {
 } from '@/services/mangadex';
 import {
   getCurrentUser,
+  getViewedChapterIds,
   isMangaSaved,
+  markChapterViewed,
   removeSavedManga,
   saveManga,
 } from '@/services/user-library';
@@ -75,9 +77,11 @@ export default function MangaScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, refreshSavedState] = useState(0);
+  const [, refreshViewedState] = useState(0);
   const currentError = mangaId ? error : 'No se encontro el manga solicitado';
   const currentUser = getCurrentUser();
   const isSaved = Boolean(currentUser && mangaId && isMangaSaved(currentUser.id, mangaId));
+  const viewedChapterIds = mangaId ? new Set(getViewedChapterIds(mangaId, language)) : new Set<string>();
 
   const displayedChapters = useMemo(
     () => (chapterOrder === 'desc' ? [...chapters].reverse() : chapters),
@@ -126,6 +130,9 @@ export default function MangaScreen() {
     if (!mangaId || !chapter) {
       return;
     }
+
+    markChapterViewed(mangaId, chapter.id, language);
+    refreshViewedState((current) => current + 1);
 
     router.push({
       pathname: '/chapter',
@@ -259,26 +266,46 @@ export default function MangaScreen() {
 
             {chapters.length > 0 ? (
               <View style={styles.chapterList}>
-                {displayedChapters.map((chapter) => (
-                  <Pressable
-                    key={chapter.id}
-                    onPress={() => openChapter(chapter)}
-                    style={({ pressed }) => [styles.chapterRow, pressed && styles.pressed]}>
-                    <View style={styles.chapterInfo}>
-                      <ThemedText type="smallBold" numberOfLines={1}>
-                        Capitulo {chapter.chapter}
-                        {chapter.title ? ` - ${chapter.title}` : ''}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                        {chapter.pages} paginas
-                        {chapter.groupName ? ` - ${chapter.groupName}` : ''}
-                      </ThemedText>
-                    </View>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {formatChapterDate(chapter.readableAt)}
-                    </ThemedText>
-                  </Pressable>
-                ))}
+                {displayedChapters.map((chapter) => {
+                  const isViewed = viewedChapterIds.has(chapter.id);
+
+                  return (
+                    <Pressable
+                      key={chapter.id}
+                      onPress={() => openChapter(chapter)}
+                      style={({ pressed }) => [
+                        styles.chapterRow,
+                        isViewed && styles.chapterRowViewed,
+                        pressed && styles.pressed,
+                      ]}>
+                      <View style={styles.chapterInfo}>
+                        <ThemedText
+                          type="smallBold"
+                          themeColor={isViewed ? 'textSecondary' : undefined}
+                          numberOfLines={1}>
+                          Capitulo {chapter.chapter}
+                          {chapter.title ? ` - ${chapter.title}` : ''}
+                        </ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                          {chapter.pages} paginas
+                          {chapter.groupName ? ` - ${chapter.groupName}` : ''}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.chapterMetaRight}>
+                        {isViewed && (
+                          <View style={styles.viewedPill}>
+                            <ThemedText type="code" style={styles.viewedPillText}>
+                              VISTO
+                            </ThemedText>
+                          </View>
+                        )}
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {formatChapterDate(chapter.readableAt)}
+                        </ThemedText>
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
             ) : (
               <LoadingRow label="No hay capitulos disponibles en este idioma." />
@@ -424,9 +451,29 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
   },
+  chapterRowViewed: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#147d55',
+    backgroundColor: 'rgba(20, 125, 85, 0.12)',
+  },
   chapterInfo: {
     flex: 1,
     minWidth: 0,
+  },
+  chapterMetaRight: {
+    minWidth: 116,
+    alignItems: 'flex-end',
+    gap: Spacing.one,
+  },
+  viewedPill: {
+    minHeight: 22,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.one,
+    backgroundColor: '#147d55',
+  },
+  viewedPillText: {
+    color: '#ffffff',
   },
   loadingRow: {
     minHeight: 68,

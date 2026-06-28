@@ -1,4 +1,4 @@
-import { Image } from 'expo-image';
+import { Image, type ImageLoadEventData } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -27,6 +27,7 @@ import {
   type MangaLanguage,
   type MangaSearchResult,
 } from '@/services/mangadex';
+import { markChapterViewed } from '@/services/user-library';
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -49,6 +50,7 @@ export default function ChapterScreen() {
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
+  const [pageAspectRatios, setPageAspectRatios] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const currentError = mangaId && chapterId ? error : 'No se encontro el capitulo solicitado';
@@ -97,6 +99,8 @@ export default function ChapterScreen() {
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
         setChapterPages(nextPages);
+        setPageAspectRatios({});
+        markChapterViewed(nextMangaId, nextChapterId, language);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el capitulo');
       } finally {
@@ -135,6 +139,20 @@ export default function ChapterScreen() {
         language,
       },
     });
+  }
+
+  function handlePageLoad(pageUrl: string, event: ImageLoadEventData) {
+    const width = event.source.width;
+    const height = event.source.height;
+
+    if (!width || !height) {
+      return;
+    }
+
+    setPageAspectRatios((currentAspectRatios) => ({
+      ...currentAspectRatios,
+      [pageUrl]: width / height,
+    }));
   }
 
   return (
@@ -212,8 +230,12 @@ export default function ChapterScreen() {
             <Image
               key={pageUrl}
               source={{ uri: pageUrl }}
-              style={styles.readerPage}
-              contentFit="contain"
+              style={[
+                styles.readerPage,
+                { aspectRatio: pageAspectRatios[pageUrl] ?? 720 / 1040 },
+              ]}
+              contentFit="cover"
+              onLoad={(event) => handlePageLoad(pageUrl, event)}
               transition={180}
               recyclingKey={`${chapterId}-${index}`}
             />
@@ -287,9 +309,8 @@ const styles = StyleSheet.create({
   },
   readerPage: {
     width: '100%',
-    aspectRatio: 720 / 1040,
     borderRadius: Spacing.one,
-    backgroundColor: '#111111',
+    backgroundColor: 'rgba(120, 130, 150, 0.08)',
   },
   loadingRow: {
     minHeight: 68,

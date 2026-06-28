@@ -16,28 +16,6 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
-## Google login
-
-Para abrir el popup oficial de Google, elegir cuentas iniciadas o iniciar sesion con correo y contrasena, la app necesita un OAuth Client ID web.
-
-1. Crea un OAuth Client ID en Google Cloud Console.
-2. En "Authorized JavaScript origins", agrega:
-
-   ```text
-   http://localhost:4200
-   ```
-
-3. Copia `.env.example` como `.env.local`.
-4. Pega tu client ID real:
-
-   ```env
-   EXPO_PUBLIC_GOOGLE_CLIENT_ID=tu_client_id.apps.googleusercontent.com
-   ```
-
-5. Reinicia Expo para que lea la variable.
-
-Sin ese valor, Google no permite abrir la autenticacion real.
-
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
