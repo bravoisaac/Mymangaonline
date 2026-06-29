@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -31,6 +31,18 @@ import {
 
 const INITIAL_QUERY = 'one piece';
 const LIBRARY_PAGE_SIZE = 15;
+const CATEGORY_GROUPS = [
+  { key: 'all', label: 'Todas' },
+  { key: 'genre', label: 'Generos' },
+  { key: 'theme', label: 'Temas' },
+] as const;
+const TAG_FILTER_MODES = [
+  { key: 'AND', label: 'Coincidir todo' },
+  { key: 'OR', label: 'Cualquier filtro' },
+] as const;
+
+type CategoryGroupFilter = (typeof CATEGORY_GROUPS)[number]['key'];
+type TagFilterMode = (typeof TAG_FILTER_MODES)[number]['key'];
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -48,6 +60,7 @@ export default function ReaderScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
+  const hasRunInitialSearch = useRef(false);
   const [query, setQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
   const [results, setResults] = useState<MangaSearchResult[]>([]);
@@ -59,14 +72,45 @@ export default function ReaderScreen() {
   const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [categories, setCategories] = useState<MangaTag[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [categoryGroup, setCategoryGroup] = useState<CategoryGroupFilter>('all');
+  const [categorySearch, setCategorySearch] = useState('');
+  const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>('AND');
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<'query' | 'category' | null>(null);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const autoSearch = getParam(params.autoSearch);
   const libraryPageCount = Math.max(1, Math.ceil(libraryTotal / LIBRARY_PAGE_SIZE));
   const canGoToPreviousLibraryPage = libraryPage > 0 && !isLoadingLibrary;
   const canGoToNextLibraryPage = libraryPage + 1 < libraryPageCount && !isLoadingLibrary;
-  const selectedCategory = categories.find((category) => category.id === selectedCategoryId);
+  const selectedCategoryIdSet = useMemo(() => new Set(selectedCategoryIds), [selectedCategoryIds]);
+  const selectedCategories = useMemo(
+    () => categories.filter((category) => selectedCategoryIdSet.has(category.id)),
+    [categories, selectedCategoryIdSet],
+  );
+  const filteredCategories = useMemo(() => {
+    const normalizedSearch = categorySearch.trim().toLocaleLowerCase();
+
+    return categories.filter((category) => {
+      const matchesGroup = categoryGroup === 'all' || category.group === categoryGroup;
+      const matchesSearch =
+        normalizedSearch.length === 0 || category.name.toLocaleLowerCase().includes(normalizedSearch);
+
+      return matchesGroup && matchesSearch;
+    });
+  }, [categories, categoryGroup, categorySearch]);
+  const selectedCategorySummary =
+    selectedCategories.length > 0
+      ? `${selectedCategories
+          .slice(0, 3)
+          .map((category) => category.name)
+          .join(', ')}${selectedCategories.length > 3 ? ` +${selectedCategories.length - 3}` : ''}`
+      : null;
+  const categoryStatusText =
+    selectedCategories.length > 0
+      ? `${selectedCategories.length} seleccionado${selectedCategories.length === 1 ? '' : 's'}`
+      : `${filteredCategories.length} disponibles`;
 
   const contentInset = useMemo(
     () => ({
@@ -90,7 +134,8 @@ export default function ReaderScreen() {
       setIsSearching(true);
       setError(null);
       const nextResults = await searchManga(nextQuery, nextLanguage, {
-        tagId: selectedCategoryId ?? undefined,
+        tagIds: selectedCategoryIds,
+        tagMode: tagFilterMode,
       });
       setResults(nextResults);
     } catch (searchError) {
@@ -98,7 +143,7 @@ export default function ReaderScreen() {
     } finally {
       setIsSearching(false);
     }
-  }, [selectedCategoryId]);
+  }, [selectedCategoryIds, tagFilterMode]);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -106,7 +151,8 @@ export default function ReaderScreen() {
     async function runInitialSearch() {
       await Promise.resolve();
 
-      if (isCurrentRequest && autoSearch === '1' && initialQuery.trim()) {
+      if (isCurrentRequest && !hasRunInitialSearch.current && autoSearch === '1' && initialQuery.trim()) {
+        hasRunInitialSearch.current = true;
         await runSearch(initialQuery, getInitialLanguage(params.language));
       }
     }
@@ -156,7 +202,8 @@ export default function ReaderScreen() {
         setIsLoadingLibrary(true);
         setLibraryError(null);
         const nextPage = await getMangaLibrary(language, libraryPage, LIBRARY_PAGE_SIZE, {
-          tagId: selectedCategoryId ?? undefined,
+          tagIds: selectedCategoryIds,
+          tagMode: tagFilterMode,
         });
 
         if (isCurrentRequest) {
@@ -179,7 +226,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, selectedCategoryId]);
+  }, [language, libraryPage, selectedCategoryIds, tagFilterMode]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -190,8 +237,18 @@ export default function ReaderScreen() {
     setLibraryPage(0);
   }
 
-  function handleCategoryChange(nextCategoryId: string | null) {
-    setSelectedCategoryId(nextCategoryId);
+  function handleCategoryToggle(nextCategoryId: string) {
+    setSelectedCategoryIds((currentCategoryIds) =>
+      currentCategoryIds.includes(nextCategoryId)
+        ? currentCategoryIds.filter((categoryId) => categoryId !== nextCategoryId)
+        : [...currentCategoryIds, nextCategoryId],
+    );
+    setLibraryPage(0);
+  }
+
+  function clearCategoryFilters() {
+    setSelectedCategoryIds([]);
+    setCategorySearch('');
     setLibraryPage(0);
   }
 
@@ -236,102 +293,245 @@ export default function ReaderScreen() {
       </View>
 
       <ThemedView type="backgroundElement" style={styles.searchPanel}>
-        <View style={styles.searchRow}>
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Buscar manga"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            onSubmitEditing={handleSearch}
-            style={[styles.input, { color: theme.text }]}
-          />
-          <Pressable
-            disabled={isSearching}
-            onPress={handleSearch}
-            style={({ pressed }) => [
-              styles.searchButton,
-              isSearching && styles.disabled,
-              pressed && styles.pressed,
-            ]}>
-            {isSearching ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                Buscar
-              </ThemedText>
-            )}
-          </Pressable>
-        </View>
-
-        <View style={styles.languageRow}>
-          {MANGA_LANGUAGES.map((item) => (
-            <Pressable
-              key={item.code}
-              onPress={() => handleLanguageChange(item.code)}
-              style={[
-                styles.languageChip,
-                language === item.code && styles.languageChipSelected,
-              ]}>
-              <ThemedText
-                type="smallBold"
-                style={language === item.code && styles.primaryButtonText}>
-                {item.label}
-              </ThemedText>
-              <ThemedText type="code" style={language === item.code && styles.primaryButtonText}>
-                {item.code.toUpperCase()}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.filterBlock}>
-          <View style={styles.filterHeader}>
-            <ThemedText type="smallBold">Categorias</ThemedText>
-            {isLoadingCategories ? (
-              <ActivityIndicator color={theme.textSecondary} />
-            ) : (
-              <ThemedText type="code" themeColor="textSecondary">
-                {categories.length} FILTROS
-              </ThemedText>
-            )}
+        <View style={styles.panelSection}>
+          <View style={styles.panelSectionHeader}>
+            <ThemedText type="smallBold" style={styles.panelSectionTitle}>
+              Buscar en MangaDex
+            </ThemedText>
+            {isSearching && <ActivityIndicator color={theme.textSecondary} />}
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryRow}>
-            <Pressable
-              onPress={() => handleCategoryChange(null)}
+
+          <View style={styles.searchRow}>
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Buscar manga"
+              placeholderTextColor={theme.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onFocus={() => setFocusedField('query')}
+              onBlur={() => setFocusedField(null)}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
               style={[
-                styles.categoryChip,
-                selectedCategoryId === null && styles.categoryChipSelected,
+                styles.input,
+                { color: theme.text },
+                focusedField === 'query' && styles.inputFocused,
+              ]}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isSearching }}
+              disabled={isSearching}
+              onPress={handleSearch}
+              style={({ pressed, hovered, focused }) => [
+                styles.searchButton,
+                isSearching && styles.disabled,
+                (hovered || focused) && !isSearching && styles.searchButtonInteractive,
+                pressed && styles.pressed,
               ]}>
-              <ThemedText type="smallBold" style={selectedCategoryId === null && styles.primaryButtonText}>
-                Todas
-              </ThemedText>
+              {isSearching ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                  Buscar
+                </ThemedText>
+              )}
             </Pressable>
-            {categories.map((category) => (
+          </View>
+        </View>
+
+        <View style={styles.panelSection}>
+          <ThemedText type="smallBold" style={styles.panelSectionTitle}>
+            Idioma
+          </ThemedText>
+          <View style={styles.languageGrid}>
+            {MANGA_LANGUAGES.map((item) => {
+              const isSelected = language === item.code;
+
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  key={item.code}
+                  onPress={() => handleLanguageChange(item.code)}
+                  style={({ pressed, hovered, focused }) => [
+                    styles.languageChip,
+                    isSelected && styles.languageChipSelected,
+                    (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" numberOfLines={1} style={isSelected && styles.primaryButtonText}>
+                    {item.label}
+                  </ThemedText>
+                  <ThemedText
+                    type="code"
+                    themeColor={isSelected ? undefined : 'textSecondary'}
+                    style={isSelected && styles.primaryButtonText}>
+                    {item.code.toUpperCase()}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.panelSection, styles.filterBlock]}>
+          <View style={styles.filterHeader}>
+            <View style={styles.filterHeaderText}>
+              <ThemedText type="smallBold" style={styles.panelSectionTitle}>
+                Filtros
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                {selectedCategorySummary ?? 'Categorias, generos y temas'}
+              </ThemedText>
+            </View>
+            <View style={styles.filterHeaderActions}>
+              <View style={styles.statusBadge}>
+                {isLoadingCategories ? (
+                  <ActivityIndicator color={theme.textSecondary} />
+                ) : (
+                  <ThemedText type="code" themeColor="textSecondary">
+                    {categoryStatusText.toUpperCase()}
+                  </ThemedText>
+                )}
+              </View>
               <Pressable
-                key={category.id}
-                onPress={() => handleCategoryChange(category.id)}
-                style={[
-                  styles.categoryChip,
-                  selectedCategoryId === category.id && styles.categoryChipSelected,
+                accessibilityRole="button"
+                accessibilityState={{ expanded: isFilterPanelOpen }}
+                onPress={() => setIsFilterPanelOpen((currentValue) => !currentValue)}
+                style={({ pressed, hovered, focused }) => [
+                  styles.filterToggleButton,
+                  isFilterPanelOpen && styles.filterToggleButtonOpen,
+                  (hovered || focused) && !isFilterPanelOpen && styles.secondaryButtonInteractive,
+                  pressed && styles.pressed,
                 ]}>
-                <ThemedText
-                  type="smallBold"
-                  numberOfLines={1}
-                  style={selectedCategoryId === category.id && styles.primaryButtonText}>
-                  {category.name}
+                <ThemedText type="smallBold" style={isFilterPanelOpen && styles.primaryButtonText}>
+                  {isFilterPanelOpen ? 'Ocultar' : 'Filtros'}
                 </ThemedText>
               </Pressable>
-            ))}
-          </ScrollView>
-          {categoryError && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {categoryError}
-            </ThemedText>
+            </View>
+          </View>
+
+          {isFilterPanelOpen && (
+            <View style={styles.filterPanelContent}>
+              <TextInput
+                value={categorySearch}
+                onChangeText={setCategorySearch}
+                placeholder="Filtrar categorias"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onFocus={() => setFocusedField('category')}
+                onBlur={() => setFocusedField(null)}
+                style={[
+                  styles.categorySearchInput,
+                  { color: theme.text },
+                  focusedField === 'category' && styles.inputFocused,
+                ]}
+              />
+
+              <View style={styles.filterControlArea}>
+                <View style={styles.filterControlGroup}>
+                  {CATEGORY_GROUPS.map((item) => {
+                    const isSelected = categoryGroup === item.key;
+
+                    return (
+                      <Pressable
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: isSelected }}
+                        key={item.key}
+                        onPress={() => setCategoryGroup(item.key)}
+                        style={({ pressed, hovered, focused }) => [
+                          styles.filterControl,
+                          isSelected && styles.filterControlSelected,
+                          (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                          {item.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.filterControlGroup}>
+                  {TAG_FILTER_MODES.map((item) => {
+                    const isSelected = tagFilterMode === item.key;
+
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        key={item.key}
+                        onPress={() => {
+                          setTagFilterMode(item.key);
+                          setLibraryPage(0);
+                        }}
+                        style={({ pressed, hovered, focused }) => [
+                          styles.matchModeControl,
+                          isSelected && styles.matchModeControlSelected,
+                          (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                          {item.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.categoryGrid}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedCategoryIds.length === 0 }}
+                  onPress={clearCategoryFilters}
+                  style={({ pressed, hovered, focused }) => [
+                    styles.categoryChip,
+                    selectedCategoryIds.length === 0 && styles.categoryChipSelected,
+                    (hovered || focused) && selectedCategoryIds.length > 0 && styles.secondaryButtonInteractive,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" style={selectedCategoryIds.length === 0 && styles.primaryButtonText}>
+                    {selectedCategoryIds.length === 0 ? 'Sin filtros' : 'Limpiar filtros'}
+                  </ThemedText>
+                </Pressable>
+                {filteredCategories.map((category) => {
+                  const isSelected = selectedCategoryIdSet.has(category.id);
+
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      key={category.id}
+                      onPress={() => handleCategoryToggle(category.id)}
+                      style={({ pressed, hovered, focused }) => [
+                        styles.categoryChip,
+                        isSelected && styles.categoryChipSelected,
+                        (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                        pressed && styles.pressed,
+                      ]}>
+                      <ThemedText type="smallBold" numberOfLines={1} style={isSelected && styles.primaryButtonText}>
+                        {category.name}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {!isLoadingCategories && filteredCategories.length === 0 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  No hay categorias para ese filtro.
+                </ThemedText>
+              )}
+              {categoryError && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {categoryError}
+                </ThemedText>
+              )}
+            </View>
           )}
         </View>
       </ThemedView>
@@ -380,8 +580,8 @@ export default function ReaderScreen() {
       <Section title="Biblioteca">
         <View style={styles.libraryHeader}>
           <ThemedText type="small" themeColor="textSecondary">
-            {selectedCategory
-              ? `${selectedCategory.name} con capitulos en ${language.toUpperCase()}.`
+            {selectedCategorySummary
+              ? `${selectedCategorySummary} con capitulos en ${language.toUpperCase()} (${tagFilterMode}).`
               : `Mangas populares con capitulos en ${language.toUpperCase()}.`}
           </ThemedText>
           <View style={styles.libraryHeaderMeta}>
@@ -503,73 +703,198 @@ const styles = StyleSheet.create({
     lineHeight: 46,
   },
   searchPanel: {
-    gap: Spacing.three,
+    gap: Spacing.four,
     padding: Spacing.three,
     borderRadius: Spacing.two,
   },
-  searchRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    alignItems: 'center',
-  },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 48,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
-    fontSize: 16,
-  },
-  searchButton: {
-    minWidth: 96,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
-    backgroundColor: '#2364d2',
-  },
-  languageRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  panelSection: {
     gap: Spacing.two,
   },
-  languageChip: {
-    minWidth: 116,
-    minHeight: 52,
-    justifyContent: 'center',
-    gap: Spacing.half,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.18)',
-  },
-  languageChipSelected: {
-    backgroundColor: '#2364d2',
-  },
-  filterBlock: {
-    gap: Spacing.two,
-  },
-  filterHeader: {
+  panelSectionHeader: {
+    minHeight: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  categoryRow: {
-    gap: Spacing.two,
-    paddingRight: Spacing.three,
+  panelSectionTitle: {
+    fontSize: 15,
+    lineHeight: 22,
   },
-  categoryChip: {
-    maxWidth: 180,
-    minHeight: 40,
+  searchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    alignItems: 'center',
+  },
+  input: {
+    flex: 1,
+    flexBasis: 240,
+    minWidth: 176,
+    minHeight: 52,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+    fontSize: 16,
+  },
+  inputFocused: {
+    borderColor: '#3c87f7',
+    backgroundColor: 'rgba(60, 135, 247, 0.09)',
+  },
+  searchButton: {
+    minWidth: 112,
+    minHeight: 52,
+    alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: '#2364d2',
+  },
+  searchButtonInteractive: {
+    backgroundColor: '#1d56b6',
+  },
+  languageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  languageChip: {
+    flexGrow: 1,
+    flexBasis: 148,
+    minWidth: 124,
+    minHeight: 52,
+    justifyContent: 'center',
+    gap: Spacing.half,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+  },
+  languageChipSelected: {
+    backgroundColor: '#2364d2',
+    borderColor: '#2364d2',
+  },
+  filterBlock: {
+    paddingTop: Spacing.three,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  filterHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    gap: Spacing.half,
+  },
+  filterHeaderActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.two,
+  },
+  statusBadge: {
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.08)',
+  },
+  filterToggleButton: {
+    minWidth: 92,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+  },
+  filterToggleButtonOpen: {
+    borderColor: '#2364d2',
+    backgroundColor: '#2364d2',
+  },
+  filterPanelContent: {
+    gap: Spacing.two,
+    paddingTop: Spacing.one,
+  },
+  categorySearchInput: {
+    minHeight: 46,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+    fontSize: 15,
+  },
+  filterControlArea: {
+    gap: Spacing.two,
+  },
+  filterControlGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+    padding: Spacing.one,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+  },
+  filterControl: {
+    flexGrow: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.one,
+  },
+  filterControlSelected: {
+    backgroundColor: '#2364d2',
+  },
+  matchModeControl: {
+    flexGrow: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.one,
+  },
+  matchModeControlSelected: {
+    backgroundColor: '#0f766e',
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  categoryChip: {
+    maxWidth: 184,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.2)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   categoryChipSelected: {
     backgroundColor: '#2364d2',
+    borderColor: '#2364d2',
+  },
+  secondaryButtonInteractive: {
+    borderColor: '#3c87f7',
+    backgroundColor: 'rgba(60, 135, 247, 0.1)',
   },
   primaryButtonText: {
     color: '#ffffff',

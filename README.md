@@ -10,7 +10,22 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Start API_Mymangaonline in another terminal
+
+   ```bash
+   cd ..\API_Mymangaonline
+   npm run dev
+   ```
+
+3. Configure the API URL when needed
+
+   ```env
+   EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
+   ```
+
+   On Android emulator, the app defaults to `http://10.0.2.2:3000/api`. On web and iOS simulator, it defaults to `http://localhost:3000/api`.
+
+4. Start the app
 
    ```bash
    npx expo start

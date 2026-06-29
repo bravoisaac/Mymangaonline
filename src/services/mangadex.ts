@@ -43,7 +43,8 @@ export type MangaTag = {
 };
 
 export type MangaFilters = {
-  tagId?: string;
+  tagIds?: string[];
+  tagMode?: 'AND' | 'OR';
 };
 
 export type ChapterPages = {
@@ -123,7 +124,7 @@ function buildUrl(path: string, params: Record<string, string | string[]>) {
 
   Object.entries(params).forEach(([key, value]) => {
     if (Array.isArray(value)) {
-      value.forEach((item) => searchParams.append(key, item));
+      value.filter(Boolean).forEach((item) => searchParams.append(key, item));
       return;
     }
 
@@ -204,13 +205,15 @@ async function fetchJson<TResponse>(url: string) {
 }
 
 export async function searchManga(title: string, language: MangaLanguage, filters: MangaFilters = {}) {
+  const tagIds = filters.tagIds ?? [];
   const url = buildUrl('/manga', {
     title: title.trim(),
     limit: '20',
     'includes[]': 'cover_art',
     'availableTranslatedLanguage[]': language,
     'contentRating[]': ['safe', 'suggestive'],
-    'includedTags[]': filters.tagId ?? '',
+    'includedTags[]': tagIds,
+    includedTagsMode: tagIds.length > 1 ? filters.tagMode ?? 'AND' : '',
     'order[relevance]': 'desc',
   });
   const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);
@@ -260,6 +263,7 @@ export async function getMangaLibrary(
   const normalizedPage = Math.max(0, page);
   const normalizedLimit = Math.max(1, limit);
   const offset = normalizedPage * normalizedLimit;
+  const tagIds = filters.tagIds ?? [];
   const url = buildUrl('/manga', {
     limit: String(normalizedLimit),
     offset: String(offset),
@@ -267,7 +271,8 @@ export async function getMangaLibrary(
     'availableTranslatedLanguage[]': language,
     'contentRating[]': ['safe', 'suggestive'],
     hasAvailableChapters: 'true',
-    'includedTags[]': filters.tagId ?? '',
+    'includedTags[]': tagIds,
+    includedTagsMode: tagIds.length > 1 ? filters.tagMode ?? 'AND' : '',
     'order[followedCount]': 'desc',
   });
   const data = await fetchJson<MangaDexCollection<MangaAttributes>>(url);

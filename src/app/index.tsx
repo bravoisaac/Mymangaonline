@@ -16,10 +16,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { getHomeMangaFromApi } from '@/services/mymangaonline-api';
 import {
   MANGA_LANGUAGES,
-  getPopularManga,
-  getRecentlyUpdatedManga,
   type MangaLanguage,
   type MangaSearchResult,
 } from '@/services/mangadex';
@@ -54,18 +53,15 @@ export default function HomeScreen() {
       try {
         setIsLoading(true);
         setError(null);
-        const [popular, updated] = await Promise.all([
-          getPopularManga(language),
-          getRecentlyUpdatedManga(language),
-        ]);
+        const homeManga = await getHomeMangaFromApi(language);
 
         if (isMounted) {
-          setPopularManga(popular);
-          setUpdatedManga(updated);
+          setPopularManga(homeManga.recommended);
+          setUpdatedManga(homeManga.featured);
         }
       } catch (homeError) {
         if (isMounted) {
-          setError(homeError instanceof Error ? homeError.message : 'No se pudo cargar Inicio');
+          setError(homeError instanceof Error ? homeError.message : 'No se pudo cargar API_Mymangaonline');
         }
       } finally {
         if (isMounted) {
@@ -110,8 +106,8 @@ export default function HomeScreen() {
           My Manga Online
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-          Manga actualizado y popular para leer desde MangaDex. Elige idioma, revisa novedades y
-          abre cualquier titulo en Explorar.
+          Manga servido por API_Mymangaonline. Elige idioma, revisa resultados del backend y abre
+          cualquier titulo en Explorar.
         </ThemedText>
       </View>
 
@@ -157,7 +153,7 @@ export default function HomeScreen() {
 
       {error && (
         <ThemedView type="backgroundElement" style={styles.errorPanel}>
-          <ThemedText type="smallBold">No se pudo cargar MangaDex</ThemedText>
+          <ThemedText type="smallBold">No se pudo cargar API_Mymangaonline</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {error}
           </ThemedText>
@@ -174,14 +170,14 @@ export default function HomeScreen() {
       ) : (
         <>
           <MangaRail
-            title="Actualizados"
-            subtitle="Titulos con capitulos recientes en el idioma seleccionado."
+            title="Destacados desde la API"
+            subtitle="Resultados normalizados por el backend en el idioma seleccionado."
             manga={updatedManga}
             onPress={openInExplore}
           />
           <MangaRail
-            title="Populares"
-            subtitle="Los mas seguidos con capitulos disponibles."
+            title="Recomendados desde la API"
+            subtitle="Otra consulta del backend para validar consumo desde Inicio."
             manga={popularManga}
             onPress={openInExplore}
           />
