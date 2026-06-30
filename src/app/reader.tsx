@@ -266,6 +266,7 @@ export default function ReaderScreen() {
       params: {
         mangaId: manga.id,
         language,
+        source: manga.source ?? 'mangadex',
       },
     });
   }

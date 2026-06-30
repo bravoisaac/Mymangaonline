@@ -16,7 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getHomeMangaFromApi } from '@/services/mymangaonline-api';
+import { getHomeMangaFromApi, getSourceLabel } from '@/services/mymangaonline-api';
 import {
   MANGA_LANGUAGES,
   type MangaLanguage,
@@ -77,13 +77,13 @@ export default function HomeScreen() {
     };
   }, [language]);
 
-  function openInExplore(manga: MangaSearchResult) {
+  function openMangaLobby(manga: MangaSearchResult) {
     router.push({
-      pathname: '/reader',
+      pathname: '/manga',
       params: {
-        query: manga.title,
+        mangaId: manga.id,
         language,
-        autoSearch: '1',
+        source: manga.source ?? 'mangadex',
       },
     });
   }
@@ -170,16 +170,16 @@ export default function HomeScreen() {
       ) : (
         <>
           <MangaRail
-            title="Destacados desde la API"
-            subtitle="Resultados normalizados por el backend en el idioma seleccionado."
+            title="Comick desde la API"
+            subtitle="Datos normalizados desde la fuente Comick.kt en el backend."
             manga={updatedManga}
-            onPress={openInExplore}
+            onPress={openMangaLobby}
           />
           <MangaRail
-            title="Recomendados desde la API"
-            subtitle="Otra consulta del backend para validar consumo desde Inicio."
+            title="MangaDex desde la API"
+            subtitle="Resultados normalizados desde MangaDex para comparar fuentes."
             manga={popularManga}
-            onPress={openInExplore}
+            onPress={openMangaLobby}
           />
         </>
       )}
@@ -270,6 +270,7 @@ function MangaCard({ manga, onPress }: { manga: MangaSearchResult; onPress: () =
           {manga.description || 'Sin descripcion disponible.'}
         </ThemedText>
         <View style={styles.metaRow}>
+          <Pill text={getSourceLabel(manga.source)} />
           {manga.year && <Pill text={String(manga.year)} />}
           {manga.status && <Pill text={manga.status} />}
         </View>

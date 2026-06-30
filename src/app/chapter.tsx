@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -17,16 +16,19 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  MANGADEX_API_URL,
   MANGA_LANGUAGES,
-  getChapterPages,
-  getMangaById,
-  getMangaChapters,
   type ChapterPages,
   type MangaChapter,
   type MangaLanguage,
   type MangaSearchResult,
 } from '@/services/mangadex';
+import {
+  getChapterPagesFromApi,
+  getMangaChaptersFromApi,
+  getMangaDetailsFromApi,
+  getSourceLabel,
+  type MangaSourceId,
+} from '@/services/mymangaonline-api';
 import { markChapterViewed } from '@/services/user-library';
 
 function getParam(value: string | string[] | undefined) {
@@ -39,6 +41,10 @@ function getInitialLanguage(value: string | string[] | undefined): MangaLanguage
   return MANGA_LANGUAGES.some((item) => item.code === language) ? (language as MangaLanguage) : 'es';
 }
 
+function getInitialSource(value: string | string[] | undefined): MangaSourceId {
+  return getParam(value) ?? 'mangadex';
+}
+
 export default function ChapterScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
@@ -47,6 +53,8 @@ export default function ChapterScreen() {
   const mangaId = getParam(params.mangaId);
   const chapterId = getParam(params.chapterId);
   const language = getInitialLanguage(params.language);
+  const source = getInitialSource(params.source);
+  const sourceLabel = getSourceLabel(source);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
@@ -92,9 +100,9 @@ export default function ChapterScreen() {
         setIsLoading(true);
         setError(null);
         const [nextManga, chapterFeed, nextPages] = await Promise.all([
-          getMangaById(nextMangaId, language),
-          getMangaChapters(nextMangaId, language),
-          getChapterPages(nextChapterId),
+          getMangaDetailsFromApi(source, nextMangaId, language),
+          getMangaChaptersFromApi(source, nextMangaId, language),
+          getChapterPagesFromApi(source, nextChapterId),
         ]);
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
@@ -109,7 +117,7 @@ export default function ChapterScreen() {
     }
 
     void loadChapter();
-  }, [chapterId, mangaId, language]);
+  }, [chapterId, mangaId, language, source]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -122,6 +130,7 @@ export default function ChapterScreen() {
       params: {
         mangaId,
         language,
+        source,
       },
     });
   }
@@ -137,6 +146,7 @@ export default function ChapterScreen() {
         mangaId,
         chapterId: chapter.id,
         language,
+        source,
       },
     });
   }
@@ -170,7 +180,7 @@ export default function ChapterScreen() {
       showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <ThemedText type="title" style={styles.title}>
-          {manga?.title ?? 'Lector'}
+          {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
           Capitulo {selectedChapter?.chapter ?? '...'}
@@ -216,9 +226,6 @@ export default function ChapterScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {currentError}
           </ThemedText>
-          <Pressable onPress={() => Linking.openURL(`${MANGADEX_API_URL}/docs/`)}>
-            <ThemedText type="linkPrimary">Abrir documentacion de MangaDex</ThemedText>
-          </Pressable>
         </ThemedView>
       )}
 

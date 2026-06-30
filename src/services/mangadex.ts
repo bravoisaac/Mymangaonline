@@ -5,6 +5,8 @@ export type MangaLanguage = 'es' | 'en' | 'pt-br' | 'fr';
 
 export type MangaSearchResult = {
   id: string;
+  source?: string;
+  sourceName?: string;
   title: string;
   description: string;
   status?: string;
@@ -16,6 +18,7 @@ export type MangaSearchResult = {
 
 export type MangaChapter = {
   id: string;
+  source?: string;
   title: string;
   chapter: string;
   volume?: string;

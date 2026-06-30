@@ -16,7 +16,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getMangaChapters, type MangaChapter } from '@/services/mangadex';
+import type { MangaChapter } from '@/services/mangadex';
+import { getMangaChaptersFromApi, getSourceLabel } from '@/services/mymangaonline-api';
 import {
   createEmailAccount,
   getCurrentUser,
@@ -116,7 +117,7 @@ export default function LibraryScreen() {
         const progressEntries = await Promise.all(
           savedMangas.map(async (manga) => {
             try {
-              const chapterFeed = await getMangaChapters(manga.id, manga.language);
+              const chapterFeed = await getMangaChaptersFromApi(manga.source ?? 'mangadex', manga.id, manga.language);
               const viewedHistory = getViewedChapterHistory(manga.id, manga.language);
               const latestChapter = chapterFeed.chapters.at(-1);
               let lastViewedAt = '';
@@ -216,6 +217,7 @@ export default function LibraryScreen() {
       params: {
         mangaId: manga.id,
         language: manga.language,
+        source: manga.source ?? 'mangadex',
       },
     });
   }
@@ -385,7 +387,7 @@ export default function LibraryScreen() {
                     <View style={styles.mangaInfo}>
                       <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
                         <ThemedText type="smallBold" numberOfLines={2}>
-                          {manga.title || 'Sin titulo'}
+                          {manga.title || 'Sin titulo'} - {getSourceLabel(manga.source)}
                         </ThemedText>
                       </Pressable>
                       <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
