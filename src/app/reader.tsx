@@ -19,11 +19,14 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  getMangaLibrary,
-  getMangaTags,
+  getMergedMangaLibraryFromApi,
+  getMangaTagsFromApi,
+  getSourceLabel,
+  searchAllMangaFromApi,
+} from '@/services/mymangaonline-api';
+import {
   MANGADEX_API_URL,
   MANGA_LANGUAGES,
-  searchManga,
   type MangaLanguage,
   type MangaSearchResult,
   type MangaTag,
@@ -62,6 +65,7 @@ export default function ReaderScreen() {
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
   const hasRunInitialSearch = useRef(false);
   const [query, setQuery] = useState(initialQuery);
+  const [libraryQuery, setLibraryQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
   const [results, setResults] = useState<MangaSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -133,17 +137,15 @@ export default function ReaderScreen() {
       setLibraryPage(0);
       setIsSearching(true);
       setError(null);
-      const nextResults = await searchManga(nextQuery, nextLanguage, {
-        tagIds: selectedCategoryIds,
-        tagMode: tagFilterMode,
-      });
+      setLibraryQuery(nextQuery.trim());
+      const nextResults = await searchAllMangaFromApi(nextQuery, nextLanguage);
       setResults(nextResults);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : 'No se pudo buscar manga');
     } finally {
       setIsSearching(false);
     }
-  }, [selectedCategoryIds, tagFilterMode]);
+  }, []);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -171,7 +173,7 @@ export default function ReaderScreen() {
       try {
         setIsLoadingCategories(true);
         setCategoryError(null);
-        const nextCategories = await getMangaTags(language);
+        const nextCategories = await getMangaTagsFromApi(language);
 
         if (isCurrentRequest) {
           setCategories(nextCategories);
@@ -201,7 +203,8 @@ export default function ReaderScreen() {
       try {
         setIsLoadingLibrary(true);
         setLibraryError(null);
-        const nextPage = await getMangaLibrary(language, libraryPage, LIBRARY_PAGE_SIZE, {
+        const nextPage = await getMergedMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
+          query: libraryQuery,
           tagIds: selectedCategoryIds,
           tagMode: tagFilterMode,
         });
@@ -226,7 +229,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, selectedCategoryIds, tagFilterMode]);
+  }, [language, libraryPage, libraryQuery, selectedCategoryIds, tagFilterMode]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -289,7 +292,7 @@ export default function ReaderScreen() {
           Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
-          Busca en MangaDex o abre un manga desde la biblioteca para elegir capitulos.
+          Busca en MangaDex y Comick o abre un manga desde la biblioteca para elegir capitulos.
         </ThemedText>
       </View>
 
@@ -297,7 +300,7 @@ export default function ReaderScreen() {
         <View style={styles.panelSection}>
           <View style={styles.panelSectionHeader}>
             <ThemedText type="smallBold" style={styles.panelSectionTitle}>
-              Buscar en MangaDex
+              Buscar en MangaDex y Comick
             </ThemedText>
             {isSearching && <ActivityIndicator color={theme.textSecondary} />}
           </View>
@@ -325,10 +328,10 @@ export default function ReaderScreen() {
               accessibilityState={{ disabled: isSearching }}
               disabled={isSearching}
               onPress={handleSearch}
-              style={({ pressed, hovered, focused }) => [
+              style={({ pressed, hovered }) => [
                 styles.searchButton,
                 isSearching && styles.disabled,
-                (hovered || focused) && !isSearching && styles.searchButtonInteractive,
+                hovered && !isSearching && styles.searchButtonInteractive,
                 pressed && styles.pressed,
               ]}>
               {isSearching ? (
@@ -356,10 +359,10 @@ export default function ReaderScreen() {
                   accessibilityState={{ selected: isSelected }}
                   key={item.code}
                   onPress={() => handleLanguageChange(item.code)}
-                  style={({ pressed, hovered, focused }) => [
+                  style={({ pressed, hovered }) => [
                     styles.languageChip,
                     isSelected && styles.languageChipSelected,
-                    (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                    hovered && !isSelected && styles.secondaryButtonInteractive,
                     pressed && styles.pressed,
                   ]}>
                   <ThemedText type="smallBold" numberOfLines={1} style={isSelected && styles.primaryButtonText}>
@@ -401,10 +404,10 @@ export default function ReaderScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ expanded: isFilterPanelOpen }}
                 onPress={() => setIsFilterPanelOpen((currentValue) => !currentValue)}
-                style={({ pressed, hovered, focused }) => [
+                style={({ pressed, hovered }) => [
                   styles.filterToggleButton,
                   isFilterPanelOpen && styles.filterToggleButtonOpen,
-                  (hovered || focused) && !isFilterPanelOpen && styles.secondaryButtonInteractive,
+                  hovered && !isFilterPanelOpen && styles.secondaryButtonInteractive,
                   pressed && styles.pressed,
                 ]}>
                 <ThemedText type="smallBold" style={isFilterPanelOpen && styles.primaryButtonText}>
@@ -443,10 +446,10 @@ export default function ReaderScreen() {
                         accessibilityState={{ selected: isSelected }}
                         key={item.key}
                         onPress={() => setCategoryGroup(item.key)}
-                        style={({ pressed, hovered, focused }) => [
+                        style={({ pressed, hovered }) => [
                           styles.filterControl,
                           isSelected && styles.filterControlSelected,
-                          (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                          hovered && !isSelected && styles.secondaryButtonInteractive,
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
@@ -470,10 +473,10 @@ export default function ReaderScreen() {
                           setTagFilterMode(item.key);
                           setLibraryPage(0);
                         }}
-                        style={({ pressed, hovered, focused }) => [
+                        style={({ pressed, hovered }) => [
                           styles.matchModeControl,
                           isSelected && styles.matchModeControlSelected,
-                          (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                          hovered && !isSelected && styles.secondaryButtonInteractive,
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
@@ -490,10 +493,10 @@ export default function ReaderScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: selectedCategoryIds.length === 0 }}
                   onPress={clearCategoryFilters}
-                  style={({ pressed, hovered, focused }) => [
+                  style={({ pressed, hovered }) => [
                     styles.categoryChip,
                     selectedCategoryIds.length === 0 && styles.categoryChipSelected,
-                    (hovered || focused) && selectedCategoryIds.length > 0 && styles.secondaryButtonInteractive,
+                    hovered && selectedCategoryIds.length > 0 && styles.secondaryButtonInteractive,
                     pressed && styles.pressed,
                   ]}>
                   <ThemedText type="smallBold" style={selectedCategoryIds.length === 0 && styles.primaryButtonText}>
@@ -509,10 +512,10 @@ export default function ReaderScreen() {
                       accessibilityState={{ selected: isSelected }}
                       key={category.id}
                       onPress={() => handleCategoryToggle(category.id)}
-                      style={({ pressed, hovered, focused }) => [
+                      style={({ pressed, hovered }) => [
                         styles.categoryChip,
                         isSelected && styles.categoryChipSelected,
-                        (hovered || focused) && !isSelected && styles.secondaryButtonInteractive,
+                        hovered && !isSelected && styles.secondaryButtonInteractive,
                         pressed && styles.pressed,
                       ]}>
                       <ThemedText type="smallBold" numberOfLines={1} style={isSelected && styles.primaryButtonText}>
@@ -553,7 +556,7 @@ export default function ReaderScreen() {
         <Section title="Resultados">
           <FlatList
             data={results}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => `${item.source ?? 'mangadex'}:${item.id}`}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.resultList}
@@ -568,6 +571,7 @@ export default function ReaderScreen() {
                     {item.description || 'Sin descripcion disponible.'}
                   </ThemedText>
                   <View style={styles.mangaMeta}>
+                    <Pill text={getSourceLabel(item.source)} />
                     {item.year && <Pill text={String(item.year)} />}
                     {item.status && <Pill text={item.status} />}
                   </View>
@@ -583,7 +587,7 @@ export default function ReaderScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {selectedCategorySummary
               ? `${selectedCategorySummary} con capitulos en ${language.toUpperCase()} (${tagFilterMode}).`
-              : `Mangas populares con capitulos en ${language.toUpperCase()}.`}
+              : `Mangas de MangaDex y Comick con capitulos en ${language.toUpperCase()}.`}
           </ThemedText>
           <View style={styles.libraryHeaderMeta}>
             {isLoadingLibrary && libraryMangas.length > 0 && <ActivityIndicator color={theme.textSecondary} />}
@@ -613,7 +617,7 @@ export default function ReaderScreen() {
           <View style={styles.libraryGrid}>
             {libraryMangas.map((item) => (
               <Pressable
-                key={item.id}
+                key={`${item.source ?? 'mangadex'}:${item.id}`}
                 onPress={() => openManga(item)}
                 style={({ pressed }) => [styles.libraryCard, pressed && styles.pressed]}>
                 <Image source={{ uri: item.coverUrl }} style={styles.libraryCover} contentFit="cover" />
@@ -625,6 +629,7 @@ export default function ReaderScreen() {
                     {item.description || 'Sin descripcion disponible.'}
                   </ThemedText>
                   <View style={styles.mangaMeta}>
+                    <Pill text={getSourceLabel(item.source)} />
                     {item.year && <Pill text={String(item.year)} />}
                     {item.status && <Pill text={item.status} />}
                   </View>

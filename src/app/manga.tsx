@@ -96,6 +96,7 @@ export default function MangaScreen() {
     [chapterOrder, chapters],
   );
   const firstChapter = chapters[0];
+  const chapterLanguageLabel = firstChapter?.language?.toUpperCase() ?? language.toUpperCase();
 
   const contentInset = useMemo(
     () => ({
@@ -219,7 +220,7 @@ export default function MangaScreen() {
                 {manga.year && <Pill text={String(manga.year)} />}
                 {manga.contentRating && <Pill text={manga.contentRating} />}
                 <Pill text={sourceLabel} />
-                <Pill text={language.toUpperCase()} />
+                <Pill text={chapterLanguageLabel} />
               </View>
               <View style={styles.detailActions}>
                 <Pressable
@@ -296,6 +297,7 @@ export default function MangaScreen() {
                         <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                           {chapter.pages} paginas
                           {chapter.groupName ? ` - ${chapter.groupName}` : ''}
+                          {chapter.language ? ` - ${chapter.language.toUpperCase()}` : ''}
                         </ThemedText>
                       </View>
                       <View style={styles.chapterMetaRight}>

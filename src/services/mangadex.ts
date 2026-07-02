@@ -22,6 +22,7 @@ export type MangaChapter = {
   title: string;
   chapter: string;
   volume?: string;
+  language?: string;
   pages: number;
   readableAt?: string;
   groupName?: string;
