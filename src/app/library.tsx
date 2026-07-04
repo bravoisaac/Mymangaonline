@@ -17,7 +17,12 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { MangaChapter } from '@/services/mangadex';
-import { getMangaChaptersFromApi, getSourceLabel } from '@/services/mymangaonline-api';
+import {
+  getMangaChaptersFromApi,
+  getScraperChaptersFromApi,
+  getSourceLabel,
+  type ScraperChapter,
+} from '@/services/mymangaonline-api';
 import {
   createEmailAccount,
   getCurrentUser,
@@ -52,6 +57,31 @@ function getChapterLabel(chapter: MangaChapter | undefined) {
   }
 
   return `Capitulo ${chapter.chapter}`;
+}
+
+function mapScraperChapter(chapter: ScraperChapter | undefined): MangaChapter | undefined {
+  if (!chapter) {
+    return undefined;
+  }
+
+  return {
+    id: chapter.id,
+    source: `scraper:${chapter.providerId}`,
+    title: chapter.title,
+    chapter: chapter.chapterNumber === undefined ? chapter.title || 'Sin numero' : String(chapter.chapterNumber),
+    volume: chapter.volume,
+    language: chapter.language,
+    pages: 0,
+    readableAt: chapter.publishedAt,
+  };
+}
+
+function getSavedMangaSourceLabel(manga: SavedManga) {
+  if (manga.libraryType === 'scraper') {
+    return manga.providerName ?? manga.providerId ?? 'Scraper';
+  }
+
+  return getSourceLabel(manga.source);
 }
 
 export default function LibraryScreen() {
@@ -117,6 +147,21 @@ export default function LibraryScreen() {
         const progressEntries = await Promise.all(
           savedMangas.map(async (manga) => {
             try {
+              if (manga.libraryType === 'scraper' && manga.providerId && manga.scraperMangaId) {
+                const scraperChapters = await getScraperChaptersFromApi(manga.providerId, manga.scraperMangaId);
+                const latestChapter = mapScraperChapter(scraperChapters.at(-1));
+
+                return [
+                  manga.id,
+                  {
+                    chapterCount: scraperChapters.length,
+                    latestChapter,
+                    hasNewChapter: false,
+                    updatedAt: latestChapter?.readableAt ?? manga.savedAt,
+                  } satisfies MangaProgress,
+                ] as const;
+              }
+
               const chapterFeed = await getMangaChaptersFromApi(manga.source ?? 'mangadex', manga.id, manga.language);
               const viewedHistory = getViewedChapterHistory(manga.id, manga.language);
               const latestChapter = chapterFeed.chapters.at(-1);
@@ -212,6 +257,19 @@ export default function LibraryScreen() {
   }
 
   function openManga(manga: SavedManga) {
+    if (manga.libraryType === 'scraper' && manga.providerId && manga.scraperMangaId) {
+      router.push({
+        pathname: '/scrapers',
+        params: {
+          providerId: manga.providerId,
+          mangaId: manga.scraperMangaId,
+          title: manga.title,
+          q: manga.title,
+        },
+      });
+      return;
+    }
+
     router.push({
       pathname: '/manga',
       params: {
@@ -387,7 +445,7 @@ export default function LibraryScreen() {
                     <View style={styles.mangaInfo}>
                       <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
                         <ThemedText type="smallBold" numberOfLines={2}>
-                          {manga.title || 'Sin titulo'} - {getSourceLabel(manga.source)}
+                          {manga.title || 'Sin titulo'} - {getSavedMangaSourceLabel(manga)}
                         </ThemedText>
                       </Pressable>
                       <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
@@ -444,7 +502,7 @@ export default function LibraryScreen() {
                       <View style={styles.cardFooter}>
                         <View style={styles.pill}>
                           <ThemedText type="code" themeColor="textSecondary">
-                            {manga.language.toUpperCase()}
+                            {(manga.scraperLanguage ?? manga.language).toUpperCase()}
                           </ThemedText>
                         </View>
                         <Pressable onPress={() => removeManga(manga.id)} style={({ pressed }) => pressed && styles.pressed}>
@@ -460,7 +518,7 @@ export default function LibraryScreen() {
             <ThemedView type="backgroundElement" style={styles.emptyPanel}>
               <ThemedText type="smallBold">Todavia no guardaste mangas</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Abre un lobby de manga y presiona Guardar para agregarlo aqui.
+                Busca mangas en Explorar o Scrapers y presiona Guardar para agregarlos aqui.
               </ThemedText>
               <Pressable onPress={() => router.push('/reader')} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
                 <ThemedText type="smallBold" style={styles.primaryButtonText}>

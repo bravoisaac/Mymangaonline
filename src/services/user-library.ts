@@ -1,4 +1,5 @@
 import type { MangaLanguage, MangaSearchResult } from './mangadex';
+import type { ScraperMangaResult } from './mymangaonline-api';
 
 const ACCOUNTS_KEY = 'mymangaonline.accounts';
 const CURRENT_USER_KEY = 'mymangaonline.currentUser';
@@ -24,6 +25,12 @@ type LocalAccount = LocalUser & {
 export type SavedManga = MangaSearchResult & {
   language: MangaLanguage;
   savedAt: string;
+  libraryType?: 'api' | 'scraper';
+  providerId?: string;
+  providerName?: string;
+  scraperMangaId?: string;
+  scraperLanguage?: string;
+  sourceUrl?: string;
 };
 
 function getStorage() {
@@ -233,16 +240,59 @@ export function isMangaSaved(userId: string, mangaId: string) {
   return getSavedMangas(userId).some((manga) => manga.id === mangaId);
 }
 
+export function getScraperSavedMangaId(providerId: string, mangaId: string) {
+  return `scraper:${providerId}:${mangaId}`;
+}
+
+export function isScraperMangaSaved(userId: string, providerId: string, mangaId: string) {
+  return isMangaSaved(userId, getScraperSavedMangaId(providerId, mangaId));
+}
+
 export function saveManga(userId: string, manga: MangaSearchResult, language: MangaLanguage) {
   const savedMangas = getSavedMangas(userId);
   const nextManga: SavedManga = {
     ...manga,
     language,
+    libraryType: 'api',
     savedAt: new Date().toISOString(),
   };
   const nextSavedMangas = [
     nextManga,
     ...savedMangas.filter((savedManga) => savedManga.id !== manga.id),
+  ];
+
+  writeJson(getLibraryKey(userId), nextSavedMangas);
+
+  return nextSavedMangas;
+}
+
+export function saveScraperManga(
+  userId: string,
+  manga: ScraperMangaResult,
+  providerName: string,
+  providerLanguage?: string,
+) {
+  const savedMangas = getSavedMangas(userId);
+  const mangaId = getScraperSavedMangaId(manga.providerId, manga.id);
+  const nextManga: SavedManga = {
+    id: mangaId,
+    source: `scraper:${manga.providerId}`,
+    sourceName: providerName,
+    title: manga.title,
+    description: manga.description ?? '',
+    coverUrl: manga.cover,
+    language: 'es',
+    savedAt: new Date().toISOString(),
+    libraryType: 'scraper',
+    providerId: manga.providerId,
+    providerName,
+    scraperMangaId: manga.id,
+    scraperLanguage: providerLanguage,
+    sourceUrl: manga.url,
+  };
+  const nextSavedMangas = [
+    nextManga,
+    ...savedMangas.filter((savedManga) => savedManga.id !== mangaId),
   ];
 
   writeJson(getLibraryKey(userId), nextSavedMangas);

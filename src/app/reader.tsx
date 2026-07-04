@@ -46,6 +46,10 @@ const TAG_FILTER_MODES = [
 
 type CategoryGroupFilter = (typeof CATEGORY_GROUPS)[number]['key'];
 type TagFilterMode = (typeof TAG_FILTER_MODES)[number]['key'];
+type LibraryCacheEntry = {
+  mangas: MangaSearchResult[];
+  total: number;
+};
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -57,6 +61,38 @@ function getInitialLanguage(value: string | string[] | undefined): MangaLanguage
   return MANGA_LANGUAGES.some((item) => item.code === language) ? (language as MangaLanguage) : 'es';
 }
 
+function getLibraryCacheKey(
+  language: MangaLanguage,
+  page: number,
+  query: string,
+  selectedCategoryIds: string[],
+  tagFilterMode: TagFilterMode,
+) {
+  return [
+    language,
+    page,
+    query.trim().toLocaleLowerCase(),
+    [...selectedCategoryIds].sort().join(','),
+    tagFilterMode,
+  ].join('|');
+}
+
+function getVisiblePageNumbers(currentPage: number, pageCount: number) {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index);
+  }
+
+  if (currentPage < 4) {
+    return [0, 1, 2, 3, 4, pageCount - 1];
+  }
+
+  if (currentPage > pageCount - 5) {
+    return [0, pageCount - 5, pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1];
+  }
+
+  return [0, currentPage - 1, currentPage, currentPage + 1, pageCount - 1];
+}
+
 export default function ReaderScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
@@ -64,6 +100,7 @@ export default function ReaderScreen() {
   const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
   const hasRunInitialSearch = useRef(false);
+  const libraryCacheRef = useRef(new Map<string, LibraryCacheEntry>());
   const [query, setQuery] = useState(initialQuery);
   const [libraryQuery, setLibraryQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
@@ -88,6 +125,10 @@ export default function ReaderScreen() {
   const libraryPageCount = Math.max(1, Math.ceil(libraryTotal / LIBRARY_PAGE_SIZE));
   const canGoToPreviousLibraryPage = libraryPage > 0 && !isLoadingLibrary;
   const canGoToNextLibraryPage = libraryPage + 1 < libraryPageCount && !isLoadingLibrary;
+  const visibleLibraryPages = useMemo(
+    () => getVisiblePageNumbers(libraryPage, libraryPageCount),
+    [libraryPage, libraryPageCount],
+  );
   const selectedCategoryIdSet = useMemo(() => new Set(selectedCategoryIds), [selectedCategoryIds]);
   const selectedCategories = useMemo(
     () => categories.filter((category) => selectedCategoryIdSet.has(category.id)),
@@ -198,10 +239,23 @@ export default function ReaderScreen() {
 
   useEffect(() => {
     let isCurrentRequest = true;
+    const cacheKey = getLibraryCacheKey(
+      language,
+      libraryPage,
+      libraryQuery,
+      selectedCategoryIds,
+      tagFilterMode,
+    );
+    const cachedPage = libraryCacheRef.current.get(cacheKey);
+
+    if (cachedPage) {
+      setLibraryMangas(cachedPage.mangas);
+      setLibraryTotal(cachedPage.total);
+    }
 
     async function loadLibraryPage() {
       try {
-        setIsLoadingLibrary(true);
+        setIsLoadingLibrary(!cachedPage);
         setLibraryError(null);
         const nextPage = await getMergedMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
           query: libraryQuery,
@@ -210,6 +264,10 @@ export default function ReaderScreen() {
         });
 
         if (isCurrentRequest) {
+          libraryCacheRef.current.set(cacheKey, {
+            mangas: nextPage.mangas,
+            total: nextPage.total,
+          });
           setLibraryMangas(nextPage.mangas);
           setLibraryTotal(nextPage.total);
         }
@@ -230,6 +288,52 @@ export default function ReaderScreen() {
       isCurrentRequest = false;
     };
   }, [language, libraryPage, libraryQuery, selectedCategoryIds, tagFilterMode]);
+
+  useEffect(() => {
+    if (libraryPage + 1 >= libraryPageCount) {
+      return;
+    }
+
+    const nextPage = libraryPage + 1;
+    const cacheKey = getLibraryCacheKey(
+      language,
+      nextPage,
+      libraryQuery,
+      selectedCategoryIds,
+      tagFilterMode,
+    );
+
+    if (libraryCacheRef.current.has(cacheKey)) {
+      return;
+    }
+
+    let isCurrentRequest = true;
+
+    async function prefetchNextPage() {
+      try {
+        const nextLibraryPage = await getMergedMangaLibraryFromApi(language, nextPage, LIBRARY_PAGE_SIZE, {
+          query: libraryQuery,
+          tagIds: selectedCategoryIds,
+          tagMode: tagFilterMode,
+        });
+
+        if (isCurrentRequest) {
+          libraryCacheRef.current.set(cacheKey, {
+            mangas: nextLibraryPage.mangas,
+            total: nextLibraryPage.total,
+          });
+        }
+      } catch {
+        // Prefetch is only an optimization; visible loading keeps its own error handling.
+      }
+    }
+
+    void prefetchNextPage();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [language, libraryPage, libraryPageCount, libraryQuery, selectedCategoryIds, tagFilterMode]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -261,6 +365,14 @@ export default function ReaderScreen() {
 
   function openNextLibraryPage() {
     setLibraryPage((currentPage) => Math.min(libraryPageCount - 1, currentPage + 1));
+  }
+
+  function openLibraryPage(nextPage: number) {
+    if (nextPage === libraryPage || isLoadingLibrary) {
+      return;
+    }
+
+    setLibraryPage(Math.min(Math.max(0, nextPage), libraryPageCount - 1));
   }
 
   function openManga(manga: MangaSearchResult) {
@@ -653,6 +765,37 @@ export default function ReaderScreen() {
           <ThemedText type="small" themeColor="textSecondary" style={styles.paginationStatus}>
             Pagina {libraryPage + 1} de {libraryPageCount}
           </ThemedText>
+          <View style={styles.pageNumberRow}>
+            {visibleLibraryPages.map((pageNumber, index) => {
+              const previousPageNumber = visibleLibraryPages[index - 1];
+              const hasGap = previousPageNumber !== undefined && pageNumber - previousPageNumber > 1;
+              const isSelected = pageNumber === libraryPage;
+
+              return (
+                <View key={pageNumber} style={styles.pageNumberItem}>
+                  {hasGap && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      ...
+                    </ThemedText>
+                  )}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected, disabled: isLoadingLibrary }}
+                    disabled={isLoadingLibrary}
+                    onPress={() => openLibraryPage(pageNumber)}
+                    style={({ pressed }) => [
+                      styles.pageNumberButton,
+                      isSelected && styles.pageNumberButtonSelected,
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                      {pageNumber + 1}
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
           <Pressable
             disabled={!canGoToNextLibraryPage}
             onPress={openNextLibraryPage}
@@ -972,7 +1115,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: Spacing.two,
   },
   paginationButton: {
@@ -987,6 +1130,30 @@ const styles = StyleSheet.create({
   paginationStatus: {
     minWidth: 132,
     textAlign: 'center',
+  },
+  pageNumberRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+  },
+  pageNumberItem: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  pageNumberButton: {
+    minWidth: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Spacing.one,
+    backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  pageNumberButtonSelected: {
+    backgroundColor: '#2364d2',
   },
   mangaCard: {
     width: 280,

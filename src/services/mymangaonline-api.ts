@@ -101,12 +101,96 @@ type HomeMangaResponse = {
   recommended: MangaSearchResult[];
 };
 
+export type ScraperProvider = {
+  id: string;
+  name: string;
+  language?: string;
+  type: 'api' | 'scraper';
+  enabled: boolean;
+  available: boolean;
+  unavailableReason?: string;
+};
+
+export type ScraperMangaResult = {
+  id: string;
+  providerId: string;
+  title: string;
+  cover?: string;
+  description?: string;
+  url?: string;
+};
+
+export type ScraperMangaDetails = ScraperMangaResult & {
+  author?: string;
+  status?: string;
+  genres?: string[];
+};
+
+export type ScraperChapter = {
+  id: string;
+  providerId: string;
+  mangaId: string;
+  title: string;
+  chapterNumber?: number;
+  volume?: string;
+  language?: string;
+  publishedAt?: string;
+  url?: string;
+};
+
+export type ScraperPage = {
+  index: number;
+  imageUrl: string;
+};
+
+export type ScraperProviderError = {
+  providerId: string;
+  message: string;
+};
+
+export type ScraperSearchPayload = {
+  items: ScraperMangaResult[];
+  errors: ScraperProviderError[];
+};
+
+type ProvidersResponse = {
+  providers: ScraperProvider[];
+};
+
+type ScraperSearchAllResponse = {
+  query: string;
+  results: {
+    providerId: string;
+    items: ScraperMangaResult[];
+  }[];
+  errors: ScraperProviderError[];
+};
+
+type ScraperSearchProviderResponse = {
+  query: string;
+  providerId: string;
+  items: ScraperMangaResult[];
+};
+
+type ScraperChapterFeedResponse = {
+  providerId: string;
+  mangaId: string;
+  chapters: ScraperChapter[];
+};
+
+type ScraperPagesResponse = {
+  providerId: string;
+  chapterId: string;
+  pages: ScraperPage[];
+};
+
 type MergedMangaLibraryOptions = MangaFilters & {
   query?: string;
 };
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const DEFAULT_LIBRARY_QUERY = 'one piece';
+const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
 
 export const MYMANGA_API_BASE_URL = (
   process.env.EXPO_PUBLIC_MYMANGA_API_URL ?? DEFAULT_API_BASE_URL
@@ -167,6 +251,17 @@ async function fetchApiJson<TResponse>(url: string) {
   }
 
   return (await response.json()) as TResponse;
+}
+
+function withTimeout<TValue>(promise: Promise<TValue>, timeoutMs: number, fallback: TValue) {
+  return new Promise<TValue>((resolve) => {
+    const timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+
+    promise
+      .then((value) => resolve(value))
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timeoutId));
+  });
 }
 
 function mapApiManga(manga: NormalizedManga): MangaSearchResult {
@@ -297,7 +392,11 @@ export async function getMergedMangaLibraryFromApi(
     getMangaLibraryFromApi(language, normalizedPage, normalizedLimit, options),
     hasMangaDexFilters || normalizedPage > 0
       ? Promise.resolve<MangaSearchResult[]>([])
-      : searchMangaFromApi(libraryQuery, language, 'comick').catch(() => []),
+      : withTimeout(
+          searchMangaFromApi(libraryQuery, language, 'comick'),
+          SECONDARY_LIBRARY_TIMEOUT_MS,
+          [],
+        ),
   ]);
   const mergedMangas = mergeMangaLists(mangadexPage.mangas, comickMangas).slice(0, normalizedLimit);
 
@@ -362,4 +461,76 @@ export async function getHomeMangaFromApi(language: MangaLanguage): Promise<Home
     featured,
     recommended,
   };
+}
+
+export async function getScraperProvidersFromApi(activeOnly = true) {
+  const data = await fetchApiJson<ProvidersResponse>(
+    buildApiUrl('/providers', {
+      all: activeOnly ? undefined : 'true',
+    }),
+  );
+
+  return data.providers;
+}
+
+export async function searchScraperMangaFromApi(
+  query: string,
+  providerId?: string,
+): Promise<ScraperSearchPayload> {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return {
+      items: [],
+      errors: [],
+    };
+  }
+
+  if (providerId && providerId !== 'all') {
+    const data = await fetchApiJson<ScraperSearchProviderResponse>(
+      buildApiUrl(`/manga/search/${encodeURIComponent(providerId)}`, {
+        q: normalizedQuery,
+      }),
+    );
+
+    return {
+      items: data.items.map((item) => ({ ...item, providerId: item.providerId ?? data.providerId })),
+      errors: [],
+    };
+  }
+
+  const data = await fetchApiJson<ScraperSearchAllResponse>(
+    buildApiUrl('/manga/search', {
+      q: normalizedQuery,
+    }),
+  );
+
+  return {
+    items: data.results.flatMap((result) =>
+      result.items.map((item) => ({ ...item, providerId: item.providerId ?? result.providerId })),
+    ),
+    errors: data.errors,
+  };
+}
+
+export async function getScraperMangaDetailsFromApi(providerId: string, mangaId: string) {
+  return fetchApiJson<ScraperMangaDetails>(
+    buildApiUrl(`/manga/${encodeURIComponent(providerId)}/${encodeURIComponent(mangaId)}`),
+  );
+}
+
+export async function getScraperChaptersFromApi(providerId: string, mangaId: string) {
+  const data = await fetchApiJson<ScraperChapterFeedResponse>(
+    buildApiUrl(`/manga/${encodeURIComponent(providerId)}/${encodeURIComponent(mangaId)}/chapters`),
+  );
+
+  return data.chapters;
+}
+
+export async function getScraperChapterPagesFromApi(providerId: string, chapterId: string) {
+  const data = await fetchApiJson<ScraperPagesResponse>(
+    buildApiUrl(`/manga/${encodeURIComponent(providerId)}/chapters/${encodeURIComponent(chapterId)}/pages`),
+  );
+
+  return data.pages;
 }
