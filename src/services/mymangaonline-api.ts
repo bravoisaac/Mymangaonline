@@ -190,6 +190,7 @@ type MergedMangaLibraryOptions = MangaFilters & {
 
 type MangaLibraryRequestOptions = MangaFilters & {
   sort?: 'popular' | 'recentlyUpdated';
+  source?: 'all' | 'mangadex' | 'comick';
 };
 
 const HOME_MANGA_LIMIT = 15;
@@ -430,6 +431,7 @@ export async function getAllMangaLibraryFromApi(
       tagIds: options.tagIds,
       tagMode: options.tagMode,
       sort: options.sort,
+      source: options.source,
     }),
   );
 

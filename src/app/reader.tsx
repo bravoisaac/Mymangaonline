@@ -44,9 +44,15 @@ const TAG_FILTER_MODES = [
   { key: 'AND', label: 'Coincidir todo' },
   { key: 'OR', label: 'Cualquier filtro' },
 ] as const;
+const DISTRIBUTOR_FILTERS = [
+  { key: 'all', label: 'Todas' },
+  { key: 'mangadex', label: 'MangaDex' },
+  { key: 'comick', label: 'Comick' },
+] as const;
 
 type CategoryGroupFilter = (typeof CATEGORY_GROUPS)[number]['key'];
 type TagFilterMode = (typeof TAG_FILTER_MODES)[number]['key'];
+type DistributorFilter = (typeof DISTRIBUTOR_FILTERS)[number]['key'];
 type LibraryCacheEntry = {
   mangas: MangaSearchResult[];
   total: number;
@@ -69,12 +75,14 @@ function getLibraryCacheKey(
   page: number,
   selectedCategoryIds: string[],
   tagFilterMode: TagFilterMode,
+  distributorFilter: DistributorFilter,
 ) {
   return [
     language,
     page,
     [...selectedCategoryIds].sort().join(','),
     tagFilterMode,
+    distributorFilter,
   ].join('|');
 }
 
@@ -117,6 +125,7 @@ export default function ReaderScreen() {
   const [categoryGroup, setCategoryGroup] = useState<CategoryGroupFilter>('all');
   const [categorySearch, setCategorySearch] = useState('');
   const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>('AND');
+  const [distributorFilter, setDistributorFilter] = useState<DistributorFilter>('all');
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<'query' | 'category' | null>(null);
@@ -156,6 +165,8 @@ export default function ReaderScreen() {
     selectedCategories.length > 0
       ? `${selectedCategories.length} seleccionado${selectedCategories.length === 1 ? '' : 's'}`
       : `${filteredCategories.length} disponibles`;
+  const distributorLabel =
+    DISTRIBUTOR_FILTERS.find((item) => item.key === distributorFilter)?.label ?? 'Todas';
 
   const contentInset = useMemo(
     () => ({
@@ -243,6 +254,7 @@ export default function ReaderScreen() {
       libraryPage,
       selectedCategoryIds,
       tagFilterMode,
+      distributorFilter,
     );
     const cachedPage = libraryCacheRef.current.get(cacheKey);
 
@@ -258,6 +270,7 @@ export default function ReaderScreen() {
         const nextPage = await getAllMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
           tagIds: selectedCategoryIds,
           tagMode: tagFilterMode,
+          source: distributorFilter,
         });
 
         if (isCurrentRequest) {
@@ -284,7 +297,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, selectedCategoryIds, tagFilterMode]);
+  }, [language, libraryPage, selectedCategoryIds, tagFilterMode, distributorFilter]);
 
   useEffect(() => {
     if (libraryPage + 1 >= libraryPageCount) {
@@ -297,6 +310,7 @@ export default function ReaderScreen() {
       nextPage,
       selectedCategoryIds,
       tagFilterMode,
+      distributorFilter,
     );
 
     if (libraryCacheRef.current.has(cacheKey)) {
@@ -310,6 +324,7 @@ export default function ReaderScreen() {
         const nextLibraryPage = await getAllMangaLibraryFromApi(language, nextPage, LIBRARY_PAGE_SIZE, {
           tagIds: selectedCategoryIds,
           tagMode: tagFilterMode,
+          source: distributorFilter,
         });
 
         if (isCurrentRequest) {
@@ -328,7 +343,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, libraryPageCount, selectedCategoryIds, tagFilterMode]);
+  }, [language, libraryPage, libraryPageCount, selectedCategoryIds, tagFilterMode, distributorFilter]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -351,6 +366,11 @@ export default function ReaderScreen() {
   function clearCategoryFilters() {
     setSelectedCategoryIds([]);
     setCategorySearch('');
+    setLibraryPage(0);
+  }
+
+  function handleDistributorChange(nextDistributor: DistributorFilter) {
+    setDistributorFilter(nextDistributor);
     setLibraryPage(0);
   }
 
@@ -544,6 +564,30 @@ export default function ReaderScreen() {
 
               <View style={styles.filterControlArea}>
                 <View style={styles.filterControlGroup}>
+                  {DISTRIBUTOR_FILTERS.map((item) => {
+                    const isSelected = distributorFilter === item.key;
+
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        key={item.key}
+                        onPress={() => handleDistributorChange(item.key)}
+                        style={({ pressed, hovered }) => [
+                          styles.filterControl,
+                          isSelected && styles.filterControlSelected,
+                          hovered && !isSelected && styles.secondaryButtonInteractive,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                          {item.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.filterControlGroup}>
                   {CATEGORY_GROUPS.map((item) => {
                     const isSelected = categoryGroup === item.key;
 
@@ -693,8 +737,8 @@ export default function ReaderScreen() {
         <View style={styles.libraryHeader}>
           <ThemedText type="small" themeColor="textSecondary">
             {selectedCategorySummary
-              ? `${selectedCategorySummary} con capitulos en ${language.toUpperCase()} (${tagFilterMode}).`
-              : `Mangas de MangaDex y Comick con capitulos en ${language.toUpperCase()}${language === 'es' ? ' / ES-419' : ''}.`}
+              ? `${selectedCategorySummary} en ${distributorLabel} con capitulos en ${language.toUpperCase()} (${tagFilterMode}).`
+              : `${distributorLabel} con capitulos en ${language.toUpperCase()}${language === 'es' ? ' / ES-419' : ''}.`}
           </ThemedText>
           <View style={styles.libraryHeaderMeta}>
             {isLoadingLibrary && libraryMangas.length > 0 && <ActivityIndicator color={theme.textSecondary} />}
