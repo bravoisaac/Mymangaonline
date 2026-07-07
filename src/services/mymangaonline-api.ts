@@ -192,6 +192,8 @@ type MangaLibraryRequestOptions = MangaFilters & {
   sort?: 'popular' | 'recentlyUpdated';
 };
 
+const HOME_MANGA_LIMIT = 15;
+const HOME_MANGA_LOOKAHEAD_LIMIT = 30;
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const DEFAULT_LIBRARY_QUERY = 'one piece';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
@@ -484,13 +486,13 @@ export async function getChapterPagesFromApi(source: MangaSourceId, chapterId: s
 
 export async function getHomeMangaFromApi(language: MangaLanguage): Promise<HomeMangaResponse> {
   const [updatedPage, popularPage] = await Promise.all([
-    getAllMangaLibraryFromApi(language, 0, 15, { sort: 'recentlyUpdated' }),
-    getAllMangaLibraryFromApi(language, 0, 15, { sort: 'popular' }),
+    getAllMangaLibraryFromApi(language, 0, HOME_MANGA_LOOKAHEAD_LIMIT, { sort: 'recentlyUpdated' }),
+    getAllMangaLibraryFromApi(language, 0, HOME_MANGA_LOOKAHEAD_LIMIT, { sort: 'popular' }),
   ]);
 
   return {
-    featured: updatedPage.mangas,
-    recommended: popularPage.mangas,
+    featured: mergeMangaLists(updatedPage.mangas, popularPage.mangas).slice(0, HOME_MANGA_LIMIT),
+    recommended: popularPage.mangas.slice(0, HOME_MANGA_LIMIT),
   };
 }
 

@@ -399,7 +399,7 @@ export default function ReaderScreen() {
           Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
-          Busca en MangaDex y Comick o abre un manga desde la biblioteca para elegir capitulos.
+          Busca en MangaDex y Comick o abre un manga desde la biblioteca. Espanol incluye ES-419.
         </ThemedText>
       </View>
 
@@ -694,7 +694,7 @@ export default function ReaderScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {selectedCategorySummary
               ? `${selectedCategorySummary} con capitulos en ${language.toUpperCase()} (${tagFilterMode}).`
-              : `Mangas de MangaDex y Comick con capitulos en ${language.toUpperCase()}.`}
+              : `Mangas de MangaDex y Comick con capitulos en ${language.toUpperCase()}${language === 'es' ? ' / ES-419' : ''}.`}
           </ThemedText>
           <View style={styles.libraryHeaderMeta}>
             {isLoadingLibrary && libraryMangas.length > 0 && <ActivityIndicator color={theme.textSecondary} />}

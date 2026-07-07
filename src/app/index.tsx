@@ -117,7 +117,7 @@ export default function HomeScreen() {
           <View>
             <ThemedText type="smallBold">Idioma de lectura</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Filtra populares, actualizados y busqueda.
+              Filtra populares, actualizados y busqueda. Espanol incluye ES-419.
             </ThemedText>
           </View>
           <Pressable
@@ -172,13 +172,13 @@ export default function HomeScreen() {
         <>
           <MangaRail
             title="Mangas actualizados"
-            subtitle="Capitulos recientes desde las fuentes disponibles en el backend."
+            subtitle="Capitulos recientes y titulos ES-419 disponibles desde el backend."
             manga={updatedManga}
             onPress={openMangaLobby}
           />
           <MangaRail
             title="Populares"
-            subtitle="Titulos con mayor seguimiento desde las fuentes disponibles."
+            subtitle="Titulos con mayor seguimiento en espanol y ES-419."
             manga={popularManga}
             onPress={openMangaLobby}
           />
