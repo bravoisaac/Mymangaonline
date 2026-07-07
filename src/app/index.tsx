@@ -18,6 +18,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getHomeMangaFromApi, getSourceLabel } from '@/services/mymangaonline-api';
 import {
+  DEFAULT_MANGA_LANGUAGE,
   MANGA_LANGUAGES,
   type MangaLanguage,
   type MangaSearchResult,
@@ -30,7 +31,7 @@ const MANGA_CARD_STEP = MANGA_CARD_WIDTH + MANGA_CARD_GAP;
 export default function HomeScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
-  const [language, setLanguage] = useState<MangaLanguage>('es');
+  const [language, setLanguage] = useState<MangaLanguage>(DEFAULT_MANGA_LANGUAGE);
   const [popularManga, setPopularManga] = useState<MangaSearchResult[]>([]);
   const [updatedManga, setUpdatedManga] = useState<MangaSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,8 +107,8 @@ export default function HomeScreen() {
           My Manga Online
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-          Manga servido por API_Mymangaonline. Elige idioma, revisa resultados del backend y abre
-          cualquier titulo en Explorar.
+          Manga servido por API_Mymangaonline. Elige idioma, revisa actualizaciones recientes y
+          abre cualquier titulo en Explorar.
         </ThemedText>
       </View>
 
@@ -170,14 +171,14 @@ export default function HomeScreen() {
       ) : (
         <>
           <MangaRail
-            title="Comick desde la API"
-            subtitle="Datos normalizados desde la fuente Comick.kt en el backend."
+            title="Mangas actualizados"
+            subtitle="Capitulos recientes desde las fuentes disponibles en el backend."
             manga={updatedManga}
             onPress={openMangaLobby}
           />
           <MangaRail
-            title="MangaDex desde la API"
-            subtitle="Resultados normalizados desde MangaDex para comparar fuentes."
+            title="Populares"
+            subtitle="Titulos con mayor seguimiento desde las fuentes disponibles."
             manga={popularManga}
             onPress={openMangaLobby}
           />

@@ -3,6 +3,8 @@ export const MANGADEX_UPLOADS_URL = 'https://uploads.mangadex.org';
 
 export type MangaLanguage = 'es' | 'en' | 'pt-br' | 'fr';
 
+export const DEFAULT_MANGA_LANGUAGE: MangaLanguage = 'es';
+
 export type MangaSearchResult = {
   id: string;
   source?: string;

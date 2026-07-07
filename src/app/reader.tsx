@@ -19,12 +19,13 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  getMergedMangaLibraryFromApi,
+  getAllMangaLibraryFromApi,
   getMangaTagsFromApi,
   getSourceLabel,
   searchAllMangaFromApi,
 } from '@/services/mymangaonline-api';
 import {
+  DEFAULT_MANGA_LANGUAGE,
   MANGADEX_API_URL,
   MANGA_LANGUAGES,
   type MangaLanguage,
@@ -58,20 +59,20 @@ function getParam(value: string | string[] | undefined) {
 function getInitialLanguage(value: string | string[] | undefined): MangaLanguage {
   const language = getParam(value);
 
-  return MANGA_LANGUAGES.some((item) => item.code === language) ? (language as MangaLanguage) : 'es';
+  return MANGA_LANGUAGES.some((item) => item.code === language)
+    ? (language as MangaLanguage)
+    : DEFAULT_MANGA_LANGUAGE;
 }
 
 function getLibraryCacheKey(
   language: MangaLanguage,
   page: number,
-  query: string,
   selectedCategoryIds: string[],
   tagFilterMode: TagFilterMode,
 ) {
   return [
     language,
     page,
-    query.trim().toLocaleLowerCase(),
     [...selectedCategoryIds].sort().join(','),
     tagFilterMode,
   ].join('|');
@@ -102,7 +103,6 @@ export default function ReaderScreen() {
   const hasRunInitialSearch = useRef(false);
   const libraryCacheRef = useRef(new Map<string, LibraryCacheEntry>());
   const [query, setQuery] = useState(initialQuery);
-  const [libraryQuery, setLibraryQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
   const [results, setResults] = useState<MangaSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -178,7 +178,6 @@ export default function ReaderScreen() {
       setLibraryPage(0);
       setIsSearching(true);
       setError(null);
-      setLibraryQuery(nextQuery.trim());
       const nextResults = await searchAllMangaFromApi(nextQuery, nextLanguage);
       setResults(nextResults);
     } catch (searchError) {
@@ -242,7 +241,6 @@ export default function ReaderScreen() {
     const cacheKey = getLibraryCacheKey(
       language,
       libraryPage,
-      libraryQuery,
       selectedCategoryIds,
       tagFilterMode,
     );
@@ -257,8 +255,7 @@ export default function ReaderScreen() {
       try {
         setIsLoadingLibrary(!cachedPage);
         setLibraryError(null);
-        const nextPage = await getMergedMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
-          query: libraryQuery,
+        const nextPage = await getAllMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
           tagIds: selectedCategoryIds,
           tagMode: tagFilterMode,
         });
@@ -287,7 +284,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, libraryQuery, selectedCategoryIds, tagFilterMode]);
+  }, [language, libraryPage, selectedCategoryIds, tagFilterMode]);
 
   useEffect(() => {
     if (libraryPage + 1 >= libraryPageCount) {
@@ -298,7 +295,6 @@ export default function ReaderScreen() {
     const cacheKey = getLibraryCacheKey(
       language,
       nextPage,
-      libraryQuery,
       selectedCategoryIds,
       tagFilterMode,
     );
@@ -311,8 +307,7 @@ export default function ReaderScreen() {
 
     async function prefetchNextPage() {
       try {
-        const nextLibraryPage = await getMergedMangaLibraryFromApi(language, nextPage, LIBRARY_PAGE_SIZE, {
-          query: libraryQuery,
+        const nextLibraryPage = await getAllMangaLibraryFromApi(language, nextPage, LIBRARY_PAGE_SIZE, {
           tagIds: selectedCategoryIds,
           tagMode: tagFilterMode,
         });
@@ -333,7 +328,7 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, libraryPageCount, libraryQuery, selectedCategoryIds, tagFilterMode]);
+  }, [language, libraryPage, libraryPageCount, selectedCategoryIds, tagFilterMode]);
 
   async function handleSearch() {
     await runSearch(query, language);

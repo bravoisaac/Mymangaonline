@@ -188,6 +188,10 @@ type MergedMangaLibraryOptions = MangaFilters & {
   query?: string;
 };
 
+type MangaLibraryRequestOptions = MangaFilters & {
+  sort?: 'popular' | 'recentlyUpdated';
+};
+
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const DEFAULT_LIBRARY_QUERY = 'one piece';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
@@ -408,6 +412,33 @@ export async function getMergedMangaLibraryFromApi(
   };
 }
 
+export async function getAllMangaLibraryFromApi(
+  language: MangaLanguage,
+  page = 0,
+  limit = 15,
+  options: MangaLibraryRequestOptions = {},
+): Promise<MangaLibraryPage> {
+  const normalizedPage = Math.max(0, page);
+  const normalizedLimit = Math.max(1, limit);
+  const data = await fetchApiJson<MangaLibraryResponse>(
+    buildApiUrl('/manga/library/all', {
+      lang: language,
+      page: String(normalizedPage),
+      limit: String(normalizedLimit),
+      tagIds: options.tagIds,
+      tagMode: options.tagMode,
+      sort: options.sort,
+    }),
+  );
+
+  return {
+    mangas: data.mangas.map(mapApiManga),
+    total: data.total,
+    limit: data.limit,
+    offset: data.offset,
+  };
+}
+
 export async function getMangaDetailsFromApi(
   source: MangaSourceId,
   mangaId: string,
@@ -452,14 +483,14 @@ export async function getChapterPagesFromApi(source: MangaSourceId, chapterId: s
 }
 
 export async function getHomeMangaFromApi(language: MangaLanguage): Promise<HomeMangaResponse> {
-  const [featured, recommended] = await Promise.all([
-    searchMangaFromApi('one piece', language, 'comick'),
-    searchMangaFromApi('naruto', language, 'mangadex'),
+  const [updatedPage, popularPage] = await Promise.all([
+    getAllMangaLibraryFromApi(language, 0, 15, { sort: 'recentlyUpdated' }),
+    getAllMangaLibraryFromApi(language, 0, 15, { sort: 'popular' }),
   ]);
 
   return {
-    featured,
-    recommended,
+    featured: updatedPage.mangas,
+    recommended: popularPage.mangas,
   };
 }
 
