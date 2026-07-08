@@ -300,6 +300,10 @@ export default function ReaderScreen() {
   }, [language, libraryPage, selectedCategoryIds, tagFilterMode, distributorFilter]);
 
   useEffect(() => {
+    if (distributorFilter !== 'mangadex') {
+      return;
+    }
+
     if (libraryPage + 1 >= libraryPageCount) {
       return;
     }
@@ -775,9 +779,6 @@ export default function ReaderScreen() {
                 <View style={styles.libraryInfo}>
                   <ThemedText type="smallBold" numberOfLines={2}>
                     {item.title}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
-                    {item.description || 'Sin descripcion disponible.'}
                   </ThemedText>
                   <View style={styles.mangaMeta}>
                     <Pill text={getSourceLabel(item.source)} />
