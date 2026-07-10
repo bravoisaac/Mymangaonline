@@ -16,6 +16,7 @@ export type MangaSearchResult = {
   contentRating?: string;
   coverUrl?: string;
   latestUploadedChapter?: string;
+  chapterCount?: number;
 };
 
 export type MangaChapter = {
@@ -33,6 +34,8 @@ export type MangaChapter = {
 export type MangaChapterFeed = {
   chapters: MangaChapter[];
   total: number;
+  limit?: number;
+  offset?: number;
 };
 
 export type MangaLibraryPage = {

@@ -88,6 +88,9 @@ type ChapterFeedResponse = {
   mangaId: string;
   lang: string;
   chapters: NormalizedChapter[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 type ChapterPagesResponse = {
@@ -271,7 +274,7 @@ function withTimeout<TValue>(promise: Promise<TValue>, timeoutMs: number, fallba
   });
 }
 
-function mapApiManga(manga: NormalizedManga): MangaSearchResult {
+function mapApiManga(manga: NormalizedManga | NormalizedMangaDetails): MangaSearchResult {
   return {
     id: manga.id,
     source: manga.source,
@@ -281,6 +284,7 @@ function mapApiManga(manga: NormalizedManga): MangaSearchResult {
     status: manga.status,
     year: manga.year ?? undefined,
     coverUrl: getApiImageUrl(manga.source, manga.cover),
+    chapterCount: 'chaptersCount' in manga ? manga.chaptersCount : undefined,
   };
 }
 
@@ -461,16 +465,22 @@ export async function getMangaChaptersFromApi(
   source: MangaSourceId,
   mangaId: string,
   language: MangaLanguage,
+  offset = 0,
+  limit = 100,
 ) {
   const data = await fetchApiJson<ChapterFeedResponse>(
     buildApiUrl(`/manga/${encodeURIComponent(source)}/${encodeURIComponent(mangaId)}/chapters`, {
       lang: language,
+      offset: String(Math.max(0, offset)),
+      limit: String(Math.max(1, limit)),
     }),
   );
 
   return {
     chapters: data.chapters.map(mapApiChapter),
-    total: data.chapters.length,
+    total: data.total,
+    limit: data.limit,
+    offset: data.offset,
   };
 }
 

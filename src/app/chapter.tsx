@@ -31,6 +31,8 @@ import {
 } from '@/services/mymangaonline-api';
 import { markChapterViewed } from '@/services/user-library';
 
+const CHAPTER_BATCH_SIZE = 10;
+
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -45,6 +47,11 @@ function getInitialSource(value: string | string[] | undefined): MangaSourceId {
   return getParam(value) ?? 'mangadex';
 }
 
+function getInitialOffset(value: string | string[] | undefined) {
+  const parsedOffset = Number(getParam(value));
+  return Number.isFinite(parsedOffset) ? Math.max(0, Math.floor(parsedOffset)) : 0;
+}
+
 export default function ChapterScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
@@ -54,12 +61,15 @@ export default function ChapterScreen() {
   const chapterId = getParam(params.chapterId);
   const language = getInitialLanguage(params.language);
   const source = getInitialSource(params.source);
+  const chapterOffset = getInitialOffset(params.chapterOffset);
   const sourceLabel = getSourceLabel(source);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
+  const [chapterTotal, setChapterTotal] = useState(0);
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
   const [pageAspectRatios, setPageAspectRatios] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingNext, setIsLoadingNext] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const currentError = mangaId && chapterId ? error : 'No se encontro el capitulo solicitado';
 
@@ -76,6 +86,7 @@ export default function ChapterScreen() {
     selectedChapterIndex >= 0 && selectedChapterIndex < chapters.length - 1
       ? chapters[selectedChapterIndex + 1]
       : undefined;
+  const hasMoreChapters = chapterOffset + chapters.length < chapterTotal;
 
   const contentInset = useMemo(
     () => ({
@@ -101,11 +112,12 @@ export default function ChapterScreen() {
         setError(null);
         const [nextManga, chapterFeed, nextPages] = await Promise.all([
           getMangaDetailsFromApi(source, nextMangaId, language),
-          getMangaChaptersFromApi(source, nextMangaId, language),
+          getMangaChaptersFromApi(source, nextMangaId, language, chapterOffset, CHAPTER_BATCH_SIZE),
           getChapterPagesFromApi(source, nextChapterId),
         ]);
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
+        setChapterTotal(Math.max(chapterFeed.total, nextManga.chapterCount ?? 0));
         setChapterPages(nextPages);
         setPageAspectRatios({});
         markChapterViewed(nextMangaId, nextChapterId, language);
@@ -117,7 +129,7 @@ export default function ChapterScreen() {
     }
 
     void loadChapter();
-  }, [chapterId, mangaId, language, source]);
+  }, [chapterId, chapterOffset, mangaId, language, source]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -135,7 +147,7 @@ export default function ChapterScreen() {
     });
   }
 
-  function openChapter(chapter: MangaChapter | undefined) {
+  function openChapter(chapter: MangaChapter | undefined, offset = chapterOffset) {
     if (!mangaId || !chapter) {
       return;
     }
@@ -147,8 +159,43 @@ export default function ChapterScreen() {
         chapterId: chapter.id,
         language,
         source,
+        chapterOffset: String(offset),
       },
     });
+  }
+
+  async function openNextChapter() {
+    if (nextChapter) {
+      openChapter(nextChapter);
+      return;
+    }
+
+    if (!mangaId || !hasMoreChapters || isLoadingNext) {
+      return;
+    }
+
+    try {
+      setIsLoadingNext(true);
+      setError(null);
+      const nextOffset = chapterOffset + chapters.length;
+      const chapterFeed = await getMangaChaptersFromApi(
+        source,
+        mangaId,
+        language,
+        nextOffset,
+        CHAPTER_BATCH_SIZE,
+      );
+      const firstNextChapter = chapterFeed.chapters[0];
+
+      setChapterTotal((current) => Math.max(current, chapterFeed.total));
+      if (firstNextChapter) {
+        openChapter(firstNextChapter, nextOffset);
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el siguiente capitulo');
+    } finally {
+      setIsLoadingNext(false);
+    }
   }
 
   function handlePageLoad(pageUrl: string, event: ImageLoadEventData) {
@@ -207,15 +254,15 @@ export default function ChapterScreen() {
           </ThemedText>
         </Pressable>
         <Pressable
-          disabled={!nextChapter || isLoading}
-          onPress={() => openChapter(nextChapter)}
+          disabled={(!nextChapter && !hasMoreChapters) || isLoading || isLoadingNext}
+          onPress={() => void openNextChapter()}
           style={({ pressed }) => [
             styles.navButton,
-            (!nextChapter || isLoading) && styles.disabled,
+            ((!nextChapter && !hasMoreChapters) || isLoading || isLoadingNext) && styles.disabled,
             pressed && styles.pressed,
           ]}>
           <ThemedText type="code" style={styles.primaryButtonText}>
-            {'Cap. siguiente >'}
+            {isLoadingNext ? 'Cargando...' : 'Cap. siguiente >'}
           </ThemedText>
         </Pressable>
       </ThemedView>

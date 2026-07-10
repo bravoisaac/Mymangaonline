@@ -37,6 +37,7 @@ import {
 } from '@/services/user-library';
 
 type ChapterOrder = 'asc' | 'desc';
+const CHAPTER_BATCH_SIZE = 10;
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -81,8 +82,10 @@ export default function MangaScreen() {
   const sourceLabel = getSourceLabel(source);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
+  const [chapterTotal, setChapterTotal] = useState(0);
   const [chapterOrder, setChapterOrder] = useState<ChapterOrder>('desc');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, refreshSavedState] = useState(0);
   const [, refreshViewedState] = useState(0);
@@ -121,10 +124,11 @@ export default function MangaScreen() {
         setError(null);
         const [nextManga, chapterFeed] = await Promise.all([
           getMangaDetailsFromApi(source, nextMangaId, language),
-          getMangaChaptersFromApi(source, nextMangaId, language),
+          getMangaChaptersFromApi(source, nextMangaId, language, 0, CHAPTER_BATCH_SIZE),
         ]);
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
+        setChapterTotal(Math.max(chapterFeed.total, nextManga.chapterCount ?? 0, chapterFeed.chapters.length));
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el manga');
       } finally {
@@ -135,6 +139,34 @@ export default function MangaScreen() {
     void loadManga();
   }, [mangaId, language, source]);
 
+  async function loadMoreChapters() {
+    if (!mangaId || isLoadingMore || chapters.length >= chapterTotal) {
+      return;
+    }
+
+    try {
+      setIsLoadingMore(true);
+      setError(null);
+      const chapterFeed = await getMangaChaptersFromApi(
+        source,
+        mangaId,
+        language,
+        chapters.length,
+        CHAPTER_BATCH_SIZE,
+      );
+      setChapters((current) => {
+        const chaptersById = new Map(current.map((chapter) => [chapter.id, chapter]));
+        chapterFeed.chapters.forEach((chapter) => chaptersById.set(chapter.id, chapter));
+        return Array.from(chaptersById.values());
+      });
+      setChapterTotal((current) => Math.max(current, chapterFeed.total));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar mas capitulos');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
   function openChapter(chapter: MangaChapter | undefined) {
     if (!mangaId || !chapter) {
       return;
@@ -143,6 +175,8 @@ export default function MangaScreen() {
     markChapterViewed(mangaId, chapter.id, language);
     refreshViewedState((current) => current + 1);
 
+    const chapterIndex = Math.max(0, chapters.findIndex((item) => item.id === chapter.id));
+
     router.push({
       pathname: '/chapter',
       params: {
@@ -150,6 +184,7 @@ export default function MangaScreen() {
         chapterId: chapter.id,
         language,
         source,
+        chapterOffset: String(Math.floor(chapterIndex / CHAPTER_BATCH_SIZE) * CHAPTER_BATCH_SIZE),
       },
     });
   }
@@ -237,7 +272,7 @@ export default function MangaScreen() {
                 </Pressable>
                 <ThemedView type="backgroundElement" style={styles.counterButton}>
                   <ThemedText type="smallBold" themeColor="textSecondary">
-                    Capitulos {chapters.length}
+                    Capitulos {chapterTotal}
                   </ThemedText>
                 </ThemedView>
                 <Pressable
@@ -258,7 +293,7 @@ export default function MangaScreen() {
           <View style={styles.chapterArea}>
             <View style={styles.chapterHeader}>
               <View>
-                <ThemedText type="subtitle">Capitulos {chapters.length}</ThemedText>
+                <ThemedText type="subtitle">Capitulos {chapterTotal}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   Elige un capitulo para abrir el lector.
                 </ThemedText>
@@ -315,6 +350,21 @@ export default function MangaScreen() {
                     </Pressable>
                   );
                 })}
+                {chapters.length < chapterTotal && (
+                  <Pressable
+                    disabled={isLoadingMore}
+                    onPress={() => void loadMoreChapters()}
+                    style={({ pressed }) => [
+                      styles.loadMoreButton,
+                      isLoadingMore && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}>
+                    {isLoadingMore && <ActivityIndicator color="#ffffff" />}
+                    <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                      {isLoadingMore ? 'Cargando capitulos...' : 'Seguir leyendo'}
+                    </ThemedText>
+                  </Pressable>
+                )}
               </View>
             ) : (
               <LoadingRow label="No hay capitulos disponibles en este idioma." />
@@ -449,6 +499,16 @@ const styles = StyleSheet.create({
   },
   chapterList: {
     gap: Spacing.two,
+  },
+  loadMoreButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.one,
+    backgroundColor: '#2364d2',
   },
   chapterRow: {
     minHeight: 58,
