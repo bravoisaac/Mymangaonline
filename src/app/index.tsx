@@ -85,6 +85,11 @@ export default function HomeScreen() {
         mangaId: manga.id,
         language,
         source: manga.source ?? 'mangadex',
+        title: manga.title,
+        description: manga.description,
+        coverUrl: manga.coverUrl ?? '',
+        status: manga.status ?? '',
+        year: manga.year ? String(manga.year) : '',
       },
     });
   }

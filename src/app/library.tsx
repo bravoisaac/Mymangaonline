@@ -276,6 +276,9 @@ export default function LibraryScreen() {
         mangaId: manga.id,
         language: manga.language,
         source: manga.source ?? 'mangadex',
+        title: manga.title,
+        description: manga.description ?? '',
+        coverUrl: manga.coverUrl ?? '',
       },
     });
   }

@@ -68,6 +68,26 @@ export default function ChapterScreen() {
   const chapterOffset = getInitialOffset(params.chapterOffset);
   const chapterOrder = getInitialChapterOrder(params.chapterOrder);
   const sourceLabel = getSourceLabel(source);
+  const fallbackManga = useMemo<MangaSearchResult | null>(() => {
+    const title = getParam(params.title);
+
+    if (!mangaId || !title) {
+      return null;
+    }
+
+    const parsedYear = Number(getParam(params.year));
+
+    return {
+      id: mangaId,
+      source,
+      sourceName: sourceLabel,
+      title,
+      description: getParam(params.description) ?? '',
+      coverUrl: getParam(params.coverUrl) || undefined,
+      status: getParam(params.status) || undefined,
+      year: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+    };
+  }, [mangaId, params.coverUrl, params.description, params.status, params.title, params.year, source, sourceLabel]);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterTotal, setChapterTotal] = useState(0);
@@ -115,14 +135,27 @@ export default function ChapterScreen() {
       try {
         setIsLoading(true);
         setError(null);
-        const [nextManga, chapterFeed, nextPages] = await Promise.all([
-          getMangaDetailsFromApi(source, nextMangaId, language),
+        const [mangaResult, chapterResult, pagesResult] = await Promise.allSettled([
+          fallbackManga
+            ? Promise.resolve(fallbackManga)
+            : getMangaDetailsFromApi(source, nextMangaId, language),
           getMangaChaptersFromApi(source, nextMangaId, language, chapterOffset, CHAPTER_BATCH_SIZE, chapterOrder),
           getChapterPagesFromApi(source, nextChapterId),
         ]);
+        if (chapterResult.status === 'rejected') {
+          throw chapterResult.reason;
+        }
+        if (pagesResult.status === 'rejected') {
+          throw pagesResult.reason;
+        }
+
+        const nextManga = mangaResult.status === 'fulfilled' ? mangaResult.value : fallbackManga;
+        const chapterFeed = chapterResult.value;
+        const nextPages = pagesResult.value;
+
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
-        setChapterTotal(Math.max(chapterFeed.total, nextManga.chapterCount ?? 0));
+        setChapterTotal(Math.max(chapterFeed.total, nextManga?.chapterCount ?? 0));
         setChapterPages(nextPages);
         setPageAspectRatios({});
         markChapterViewed(nextMangaId, nextChapterId, language);
@@ -134,7 +167,7 @@ export default function ChapterScreen() {
     }
 
     void loadChapter();
-  }, [chapterId, chapterOffset, chapterOrder, mangaId, language, source]);
+  }, [chapterId, chapterOffset, chapterOrder, fallbackManga, mangaId, language, source]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -148,6 +181,11 @@ export default function ChapterScreen() {
         mangaId,
         language,
         source,
+        title: manga?.title ?? fallbackManga?.title ?? '',
+        description: manga?.description ?? fallbackManga?.description ?? '',
+        coverUrl: manga?.coverUrl ?? fallbackManga?.coverUrl ?? '',
+        status: manga?.status ?? fallbackManga?.status ?? '',
+        year: manga?.year ? String(manga.year) : fallbackManga?.year ? String(fallbackManga.year) : '',
       },
     });
   }
@@ -166,6 +204,11 @@ export default function ChapterScreen() {
         source,
         chapterOffset: String(offset),
         chapterOrder,
+        title: manga?.title ?? fallbackManga?.title ?? '',
+        description: manga?.description ?? fallbackManga?.description ?? '',
+        coverUrl: manga?.coverUrl ?? fallbackManga?.coverUrl ?? '',
+        status: manga?.status ?? fallbackManga?.status ?? '',
+        year: manga?.year ? String(manga.year) : fallbackManga?.year ? String(fallbackManga.year) : '',
       },
     });
   }

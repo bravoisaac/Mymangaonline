@@ -80,6 +80,26 @@ export default function MangaScreen() {
   const language = getInitialLanguage(params.language);
   const source = getInitialSource(params.source);
   const sourceLabel = getSourceLabel(source);
+  const fallbackManga = useMemo<MangaSearchResult | null>(() => {
+    const title = getParam(params.title);
+
+    if (!mangaId || !title) {
+      return null;
+    }
+
+    const parsedYear = Number(getParam(params.year));
+
+    return {
+      id: mangaId,
+      source,
+      sourceName: sourceLabel,
+      title,
+      description: getParam(params.description) ?? '',
+      coverUrl: getParam(params.coverUrl) || undefined,
+      status: getParam(params.status) || undefined,
+      year: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+    };
+  }, [mangaId, params.coverUrl, params.description, params.status, params.title, params.year, source, sourceLabel]);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterTotal, setChapterTotal] = useState(0);
@@ -119,10 +139,23 @@ export default function MangaScreen() {
       try {
         setIsLoading(true);
         setError(null);
-        const [nextManga, chapterFeed] = await Promise.all([
-          getMangaDetailsFromApi(source, nextMangaId, language),
+        const [mangaResult, chapterResult] = await Promise.allSettled([
+          fallbackManga
+            ? Promise.resolve(fallbackManga)
+            : getMangaDetailsFromApi(source, nextMangaId, language),
           getMangaChaptersFromApi(source, nextMangaId, language, 0, CHAPTER_BATCH_SIZE, chapterOrder),
         ]);
+        if (chapterResult.status === 'rejected') {
+          throw chapterResult.reason;
+        }
+
+        const nextManga = mangaResult.status === 'fulfilled' ? mangaResult.value : fallbackManga;
+
+        if (!nextManga) {
+          throw mangaResult.status === 'rejected' ? mangaResult.reason : new Error('No se pudo cargar el manga');
+        }
+
+        const chapterFeed = chapterResult.value;
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
         setChapterTotal(Math.max(chapterFeed.total, nextManga.chapterCount ?? 0, chapterFeed.chapters.length));
@@ -134,7 +167,7 @@ export default function MangaScreen() {
     }
 
     void loadManga();
-  }, [chapterOrder, mangaId, language, source]);
+  }, [chapterOrder, fallbackManga, mangaId, language, source]);
 
   async function loadMoreChapters() {
     if (!mangaId || isLoadingMore || chapters.length >= chapterTotal) {
@@ -184,6 +217,11 @@ export default function MangaScreen() {
         source,
         chapterOffset: String(Math.floor(chapterIndex / CHAPTER_BATCH_SIZE) * CHAPTER_BATCH_SIZE),
         chapterOrder,
+        title: manga?.title ?? '',
+        description: manga?.description ?? '',
+        coverUrl: manga?.coverUrl ?? '',
+        status: manga?.status ?? '',
+        year: manga?.year ? String(manga.year) : '',
       },
     });
   }
