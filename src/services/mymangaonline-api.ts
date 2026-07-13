@@ -467,12 +467,14 @@ export async function getMangaChaptersFromApi(
   language: MangaLanguage,
   offset = 0,
   limit = 100,
+  order: 'asc' | 'desc' = 'asc',
 ) {
   const data = await fetchApiJson<ChapterFeedResponse>(
     buildApiUrl(`/manga/${encodeURIComponent(source)}/${encodeURIComponent(mangaId)}/chapters`, {
       lang: language,
       offset: String(Math.max(0, offset)),
       limit: String(Math.max(1, limit)),
+      order,
     }),
   );
 

@@ -52,6 +52,10 @@ function getInitialOffset(value: string | string[] | undefined) {
   return Number.isFinite(parsedOffset) ? Math.max(0, Math.floor(parsedOffset)) : 0;
 }
 
+function getInitialChapterOrder(value: string | string[] | undefined): 'asc' | 'desc' {
+  return getParam(value) === 'desc' ? 'desc' : 'asc';
+}
+
 export default function ChapterScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
@@ -62,6 +66,7 @@ export default function ChapterScreen() {
   const language = getInitialLanguage(params.language);
   const source = getInitialSource(params.source);
   const chapterOffset = getInitialOffset(params.chapterOffset);
+  const chapterOrder = getInitialChapterOrder(params.chapterOrder);
   const sourceLabel = getSourceLabel(source);
   const [manga, setManga] = useState<MangaSearchResult | null>(null);
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
@@ -112,7 +117,7 @@ export default function ChapterScreen() {
         setError(null);
         const [nextManga, chapterFeed, nextPages] = await Promise.all([
           getMangaDetailsFromApi(source, nextMangaId, language),
-          getMangaChaptersFromApi(source, nextMangaId, language, chapterOffset, CHAPTER_BATCH_SIZE),
+          getMangaChaptersFromApi(source, nextMangaId, language, chapterOffset, CHAPTER_BATCH_SIZE, chapterOrder),
           getChapterPagesFromApi(source, nextChapterId),
         ]);
         setManga(nextManga);
@@ -129,7 +134,7 @@ export default function ChapterScreen() {
     }
 
     void loadChapter();
-  }, [chapterId, chapterOffset, mangaId, language, source]);
+  }, [chapterId, chapterOffset, chapterOrder, mangaId, language, source]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -160,6 +165,7 @@ export default function ChapterScreen() {
         language,
         source,
         chapterOffset: String(offset),
+        chapterOrder,
       },
     });
   }
@@ -184,6 +190,7 @@ export default function ChapterScreen() {
         language,
         nextOffset,
         CHAPTER_BATCH_SIZE,
+        chapterOrder,
       );
       const firstNextChapter = chapterFeed.chapters[0];
 

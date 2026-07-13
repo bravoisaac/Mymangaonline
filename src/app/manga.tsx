@@ -94,10 +94,7 @@ export default function MangaScreen() {
   const isSaved = Boolean(currentUser && mangaId && isMangaSaved(currentUser.id, mangaId));
   const viewedChapterIds = mangaId ? new Set(getViewedChapterIds(mangaId, language)) : new Set<string>();
 
-  const displayedChapters = useMemo(
-    () => (chapterOrder === 'desc' ? [...chapters].reverse() : chapters),
-    [chapterOrder, chapters],
-  );
+  const displayedChapters = chapters;
   const firstChapter = chapters[0];
   const chapterLanguageLabel = firstChapter?.language?.toUpperCase() ?? language.toUpperCase();
 
@@ -124,7 +121,7 @@ export default function MangaScreen() {
         setError(null);
         const [nextManga, chapterFeed] = await Promise.all([
           getMangaDetailsFromApi(source, nextMangaId, language),
-          getMangaChaptersFromApi(source, nextMangaId, language, 0, CHAPTER_BATCH_SIZE),
+          getMangaChaptersFromApi(source, nextMangaId, language, 0, CHAPTER_BATCH_SIZE, chapterOrder),
         ]);
         setManga(nextManga);
         setChapters(chapterFeed.chapters);
@@ -137,7 +134,7 @@ export default function MangaScreen() {
     }
 
     void loadManga();
-  }, [mangaId, language, source]);
+  }, [chapterOrder, mangaId, language, source]);
 
   async function loadMoreChapters() {
     if (!mangaId || isLoadingMore || chapters.length >= chapterTotal) {
@@ -153,6 +150,7 @@ export default function MangaScreen() {
         language,
         chapters.length,
         CHAPTER_BATCH_SIZE,
+        chapterOrder,
       );
       setChapters((current) => {
         const chaptersById = new Map(current.map((chapter) => [chapter.id, chapter]));
@@ -185,6 +183,7 @@ export default function MangaScreen() {
         language,
         source,
         chapterOffset: String(Math.floor(chapterIndex / CHAPTER_BATCH_SIZE) * CHAPTER_BATCH_SIZE),
+        chapterOrder,
       },
     });
   }
