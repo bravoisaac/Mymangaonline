@@ -140,9 +140,7 @@ export default function MangaScreen() {
         setIsLoading(true);
         setError(null);
         const [mangaResult, chapterResult] = await Promise.allSettled([
-          fallbackManga
-            ? Promise.resolve(fallbackManga)
-            : getMangaDetailsFromApi(source, nextMangaId, language),
+          getMangaDetailsFromApi(source, nextMangaId, language),
           getMangaChaptersFromApi(source, nextMangaId, language, 0, CHAPTER_BATCH_SIZE, chapterOrder),
         ]);
         if (chapterResult.status === 'rejected') {
@@ -294,6 +292,18 @@ export default function MangaScreen() {
                 <Pill text={sourceLabel} />
                 <Pill text={chapterLanguageLabel} />
               </View>
+              {manga.genres && manga.genres.length > 0 && (
+                <View style={styles.genreSection}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    Géneros
+                  </ThemedText>
+                  <View style={styles.genreList}>
+                    {manga.genres.map((genre) => (
+                      <Pill key={genre} text={genre} variant="genre" />
+                    ))}
+                  </View>
+                </View>
+              )}
               <View style={styles.detailActions}>
                 <Pressable
                   disabled={!firstChapter}
@@ -426,10 +436,13 @@ function LoadingRow({ label }: { label: string }) {
   );
 }
 
-function Pill({ text }: { text: string }) {
+function Pill({ text, variant = 'meta' }: { text: string; variant?: 'meta' | 'genre' }) {
   return (
-    <View style={styles.pill}>
-      <ThemedText type="code" themeColor="textSecondary">
+    <View style={[styles.pill, variant === 'genre' && styles.genrePill]}>
+      <ThemedText
+        type="code"
+        themeColor={variant === 'genre' ? undefined : 'textSecondary'}
+        style={variant === 'genre' ? styles.genrePillText : undefined}>
         {text.toUpperCase()}
       </ThemedText>
     </View>
@@ -480,6 +493,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.one,
   },
+  genreSection: {
+    gap: Spacing.one,
+  },
+  genreList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
   detailActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -514,6 +535,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  genrePill: {
+    backgroundColor: 'rgba(35, 100, 210, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(76, 139, 245, 0.42)',
+  },
+  genrePillText: {
+    color: '#8eb7ff',
   },
   chapterArea: {
     gap: Spacing.two,

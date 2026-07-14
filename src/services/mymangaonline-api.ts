@@ -20,6 +20,7 @@ type NormalizedManga = {
   cover: string | null;
   status: string;
   year: number | null;
+  genres: string[];
   language: string;
 };
 
@@ -285,6 +286,7 @@ function mapApiManga(manga: NormalizedManga | NormalizedMangaDetails): MangaSear
     year: manga.year ?? undefined,
     coverUrl: getApiImageUrl(manga.source, manga.cover),
     chapterCount: 'chaptersCount' in manga ? manga.chaptersCount : undefined,
+    genres: manga.genres,
   };
 }
 

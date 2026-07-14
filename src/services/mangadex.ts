@@ -17,6 +17,7 @@ export type MangaSearchResult = {
   coverUrl?: string;
   latestUploadedChapter?: string;
   chapterCount?: number;
+  genres?: string[];
 };
 
 export type MangaChapter = {
