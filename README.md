@@ -1,71 +1,155 @@
-# Welcome to your Expo app 👋
+# My Manga Online — Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicación multiplataforma para descubrir, guardar y leer manga desde una interfaz unificada. El frontend consume `API_Mymangaonline`, combina contenido de MangaDex y ComicK, permite filtrar por idioma y presenta descripciones, géneros y capítulos disponibles.
 
-## Get started
+Construida con Expo, React Native, TypeScript y Expo Router. Funciona en web, Android e iOS desde una misma base de código.
 
-1. Install dependencies
+## Capturas
 
-   ```bash
-   npm install
-   ```
+### Inicio
 
-2. Start API_Mymangaonline in another terminal
+Selección del idioma de lectura, mangas actualizados y títulos populares.
 
-   ```bash
-   cd ..\API_Mymangaonline
-   npm run dev
-   ```
+![Pantalla de inicio de My Manga Online](./output/playwright/inicio.png)
 
-3. Configure the API URL when needed
+### Explorar manga
 
-   ```env
-   EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
-   ```
+Búsqueda, filtros por géneros y temas, navegación paginada y resultados combinados de MangaDex y ComicK.
 
-   On Android emulator, the app defaults to `http://10.0.2.2:3000/api`. On web and iOS simulator, it defaults to `http://localhost:3000/api`.
+![Pantalla para explorar manga](./output/playwright/explorar.png)
 
-4. Start the app
+### Detalle del manga
 
-   ```bash
-   npx expo start
-   ```
+Sinopsis en el idioma seleccionado, etiquetas de géneros, estado, año, fuente y listado de capítulos.
 
-In the output, you'll find options to open the app in a
+![Detalle de un manga con descripción en español](./output/playwright/detalle-manga.png)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Funcionalidades
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Catálogo combinado de MangaDex y ComicK.
+- Idiomas de lectura: español, inglés, portugués de Brasil y francés.
+- Compatibilidad con capítulos `ES` y `ES-419`.
+- Búsqueda de manga por título.
+- Filtros por categorías, géneros y temas.
+- Fichas con portada, descripción localizada, metadatos y géneros.
+- Traducción de respaldo para las sinopsis de ComicK.
+- Listado de capítulos con orden ascendente o descendente.
+- Registro de capítulos vistos.
+- Biblioteca personal para guardar mangas.
+- Interfaz adaptable para web y dispositivos móviles.
+- Tema claro u oscuro según la configuración del sistema.
 
-## Get a fresh project
+## Tecnologías
 
-When you're ready, run:
+| Tecnología | Uso |
+| --- | --- |
+| Expo 56 | Desarrollo y ejecución multiplataforma |
+| React 19 | Construcción de la interfaz |
+| React Native | Componentes nativos y web |
+| Expo Router | Navegación basada en archivos |
+| TypeScript | Tipado estático |
+| Expo Image | Carga y optimización de portadas |
+| React Native Reanimated | Animaciones de la aplicación |
 
-```bash
-npm run reset-project
+## Requisitos
+
+- Node.js 20 o superior.
+- npm.
+- El proyecto `API_Mymangaonline` instalado y en ejecución.
+- Android Studio, Xcode o Expo Go si se desea ejecutar fuera del navegador.
+
+## Instalación
+
+El repositorio contiene el frontend y la API en directorios separados:
+
+```text
+Mymangaonline/
+├── API_Mymangaonline/   # Backend
+└── Mymangaonline/       # Frontend Expo
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 1. Iniciar la API
 
-### Other setup steps
+Desde la raíz del repositorio:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+cd API_Mymangaonline
+npm install
+npm run dev
+```
 
-## Learn more
+La API se ejecuta por defecto en `http://localhost:3000/api`.
 
-To learn more about developing your project with Expo, look at the following resources:
+### 2. Iniciar el frontend
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+En otra terminal:
 
-## Join the community
+```bash
+cd Mymangaonline
+npm install
+npm run web
+```
 
-Join our community of developers creating universal apps.
+Expo mostrará la URL local. Normalmente se puede abrir la aplicación en:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```text
+http://localhost:8081/reader
+```
+
+## Configuración de la API
+
+El frontend selecciona automáticamente una URL adecuada para cada plataforma:
+
+- Web e iOS Simulator: `http://localhost:3000/api`
+- Emulador Android: `http://10.0.2.2:3000/api`
+
+Para utilizar otra dirección, crea un archivo `.env.local` dentro del frontend:
+
+```env
+EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
+```
+
+En un dispositivo físico debes reemplazar `localhost` por la IP local del equipo que ejecuta la API.
+
+## Comandos disponibles
+
+```bash
+npm run start      # Inicia Expo
+npm run web        # Abre la versión web
+npm run android    # Abre la versión Android
+npm run ios        # Abre la versión iOS
+npm run lint       # Ejecuta ESLint
+```
+
+## Rutas principales
+
+| Ruta | Descripción |
+| --- | --- |
+| `/` | Inicio y recomendaciones |
+| `/reader` | Catálogo, búsqueda y filtros |
+| `/manga` | Detalle del manga y capítulos |
+| `/chapter` | Lector del capítulo |
+| `/library` | Cuenta y mangas guardados |
+| `/scrapers` | Fuentes adicionales de contenido |
+| `/extensions` | Información de extensiones disponibles |
+
+## Estructura del frontend
+
+```text
+src/
+├── app/          # Pantallas y rutas de Expo Router
+├── components/   # Componentes visuales reutilizables
+├── constants/    # Tema, tamaños y espaciado
+├── hooks/        # Hooks de tema y plataforma
+└── services/     # Cliente de API, MangaDex y biblioteca local
+```
+
+## Validación
+
+Antes de publicar cambios ejecuta:
+
+```bash
+npm run lint
+```
+
+Las capturas del README se encuentran en `output/playwright/` y fueron generadas desde la aplicación web en ejecución.
