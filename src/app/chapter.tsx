@@ -94,6 +94,7 @@ export default function ChapterScreen() {
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
   const [pageAspectRatios, setPageAspectRatios] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
   const [isLoadingNext, setIsLoadingNext] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const currentError = mangaId && chapterId ? error : 'No se encontro el capitulo solicitado';
@@ -106,12 +107,15 @@ export default function ChapterScreen() {
     () => chapters.findIndex((chapter) => chapter.id === chapterId),
     [chapterId, chapters],
   );
-  const previousChapter = selectedChapterIndex > 0 ? chapters[selectedChapterIndex - 1] : undefined;
-  const nextChapter =
-    selectedChapterIndex >= 0 && selectedChapterIndex < chapters.length - 1
-      ? chapters[selectedChapterIndex + 1]
-      : undefined;
-  const hasMoreChapters = chapterOffset + chapters.length < chapterTotal;
+  const previousChapterIndex = selectedChapterIndex + (chapterOrder === 'desc' ? 1 : -1);
+  const nextChapterIndex = selectedChapterIndex + (chapterOrder === 'desc' ? -1 : 1);
+  const previousChapter = selectedChapterIndex >= 0 ? chapters[previousChapterIndex] : undefined;
+  const nextChapter = selectedChapterIndex >= 0 ? chapters[nextChapterIndex] : undefined;
+  const hasEarlierBatch = chapterOffset > 0;
+  const hasLaterBatch = chapterOffset + chapters.length < chapterTotal;
+  const canLoadPreviousChapter = chapterOrder === 'desc' ? hasLaterBatch : hasEarlierBatch;
+  const canLoadNextChapter = chapterOrder === 'desc' ? hasEarlierBatch : hasLaterBatch;
+  const isNavigatingChapters = isLoadingPrevious || isLoadingNext;
 
   const contentInset = useMemo(
     () => ({
@@ -213,38 +217,54 @@ export default function ChapterScreen() {
     });
   }
 
-  async function openNextChapter() {
-    if (nextChapter) {
-      openChapter(nextChapter);
+  async function openAdjacentChapter(direction: 'previous' | 'next') {
+    const loadedChapter = direction === 'previous' ? previousChapter : nextChapter;
+
+    if (loadedChapter) {
+      openChapter(loadedChapter);
       return;
     }
 
-    if (!mangaId || !hasMoreChapters || isLoadingNext) {
+    const loadsEarlierBatch =
+      direction === 'previous' ? chapterOrder === 'asc' : chapterOrder === 'desc';
+    const canLoadBatch = loadsEarlierBatch ? hasEarlierBatch : hasLaterBatch;
+
+    if (!mangaId || !canLoadBatch || isNavigatingChapters) {
       return;
     }
+
+    const setLoading = direction === 'previous' ? setIsLoadingPrevious : setIsLoadingNext;
 
     try {
-      setIsLoadingNext(true);
+      setLoading(true);
       setError(null);
-      const nextOffset = chapterOffset + chapters.length;
+      const adjacentOffset = loadsEarlierBatch
+        ? Math.max(0, chapterOffset - CHAPTER_BATCH_SIZE)
+        : chapterOffset + chapters.length;
       const chapterFeed = await getMangaChaptersFromApi(
         source,
         mangaId,
         language,
-        nextOffset,
+        adjacentOffset,
         CHAPTER_BATCH_SIZE,
         chapterOrder,
       );
-      const firstNextChapter = chapterFeed.chapters[0];
+      const adjacentChapter = loadsEarlierBatch
+        ? chapterFeed.chapters[chapterFeed.chapters.length - 1]
+        : chapterFeed.chapters[0];
 
       setChapterTotal((current) => Math.max(current, chapterFeed.total));
-      if (firstNextChapter) {
-        openChapter(firstNextChapter, nextOffset);
+      if (adjacentChapter) {
+        openChapter(adjacentChapter, adjacentOffset);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el siguiente capitulo');
+      const fallbackMessage =
+        direction === 'previous'
+          ? 'No se pudo cargar el capitulo anterior'
+          : 'No se pudo cargar el siguiente capitulo';
+      setError(loadError instanceof Error ? loadError.message : fallbackMessage);
     } finally {
-      setIsLoadingNext(false);
+      setLoading(false);
     }
   }
 
@@ -285,37 +305,15 @@ export default function ChapterScreen() {
         </ThemedText>
       </View>
 
-      <ThemedView type="backgroundElement" style={styles.controls}>
-        <Pressable
-          disabled={!previousChapter || isLoading}
-          onPress={() => openChapter(previousChapter)}
-          style={({ pressed }) => [
-            styles.navButton,
-            (!previousChapter || isLoading) && styles.disabled,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="code" style={styles.primaryButtonText}>
-            {'< Cap. anterior'}
-          </ThemedText>
-        </Pressable>
-        <Pressable onPress={openMangaLobby} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-          <ThemedText type="code" themeColor="textSecondary">
-            Capitulos
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          disabled={(!nextChapter && !hasMoreChapters) || isLoading || isLoadingNext}
-          onPress={() => void openNextChapter()}
-          style={({ pressed }) => [
-            styles.navButton,
-            ((!nextChapter && !hasMoreChapters) || isLoading || isLoadingNext) && styles.disabled,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="code" style={styles.primaryButtonText}>
-            {isLoadingNext ? 'Cargando...' : 'Cap. siguiente >'}
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
+      <ChapterNavigation
+        previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
+        nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
+        isLoadingPrevious={isLoadingPrevious}
+        isLoadingNext={isLoadingNext}
+        onPrevious={() => void openAdjacentChapter('previous')}
+        onChapters={openMangaLobby}
+        onNext={() => void openAdjacentChapter('next')}
+      />
 
       {currentError && (
         <ThemedView type="backgroundElement" style={styles.errorPanel}>
@@ -344,9 +342,77 @@ export default function ChapterScreen() {
               recyclingKey={`${chapterId}-${index}`}
             />
           ))}
+          <ChapterNavigation
+            previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
+            nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
+            isLoadingPrevious={isLoadingPrevious}
+            isLoadingNext={isLoadingNext}
+            onPrevious={() => void openAdjacentChapter('previous')}
+            onChapters={openMangaLobby}
+            onNext={() => void openAdjacentChapter('next')}
+          />
         </View>
       ) : null}
     </ScrollView>
+  );
+}
+
+type ChapterNavigationProps = {
+  previousDisabled: boolean;
+  nextDisabled: boolean;
+  isLoadingPrevious: boolean;
+  isLoadingNext: boolean;
+  onPrevious: () => void;
+  onChapters: () => void;
+  onNext: () => void;
+};
+
+function ChapterNavigation({
+  previousDisabled,
+  nextDisabled,
+  isLoadingPrevious,
+  isLoadingNext,
+  onPrevious,
+  onChapters,
+  onNext,
+}: ChapterNavigationProps) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.controls}>
+      <Pressable
+        accessibilityLabel="Abrir capítulo anterior"
+        disabled={previousDisabled}
+        onPress={onPrevious}
+        style={({ pressed }) => [
+          styles.navButton,
+          previousDisabled && styles.disabled,
+          pressed && styles.pressed,
+        ]}>
+        <ThemedText type="code" style={styles.primaryButtonText}>
+          {isLoadingPrevious ? 'Cargando...' : '< Cap. anterior'}
+        </ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="Volver a la lista de capítulos"
+        onPress={onChapters}
+        style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+        <ThemedText type="code" themeColor="textSecondary">
+          Capitulos
+        </ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="Abrir capítulo siguiente"
+        disabled={nextDisabled}
+        onPress={onNext}
+        style={({ pressed }) => [
+          styles.navButton,
+          nextDisabled && styles.disabled,
+          pressed && styles.pressed,
+        ]}>
+        <ThemedText type="code" style={styles.primaryButtonText}>
+          {isLoadingNext ? 'Cargando...' : 'Cap. siguiente >'}
+        </ThemedText>
+      </Pressable>
+    </ThemedView>
   );
 }
 
