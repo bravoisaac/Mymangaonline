@@ -3,18 +3,17 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import type { MangaChapter } from '@/services/mangadex';
 import {
@@ -86,7 +85,7 @@ function getSavedMangaSourceLabel(manga: SavedManga) {
 
 export default function LibraryScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const router = useRouter();
   const [user, setUser] = useState<LocalUser | null>(() => getCurrentUser());
   const [authMode, setAuthMode] = useState<AuthMode>('login');
@@ -98,16 +97,6 @@ export default function LibraryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingProgress, setIsLoadingProgress] = useState(false);
-
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
 
   const displayedSavedMangas = useMemo(
     () =>
@@ -304,8 +293,8 @@ export default function LibraryScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           Mis mangas
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -441,7 +430,10 @@ export default function LibraryScreen() {
                 const progress = progressByMangaId[manga.id];
 
                 return (
-                  <ThemedView key={manga.id} type="backgroundElement" style={styles.mangaCard}>
+                  <ThemedView
+                    key={manga.id}
+                    type="backgroundElement"
+                    style={[styles.mangaCard, isCompact && styles.compactMangaCard]}>
                     <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
                       <Image source={{ uri: manga.coverUrl }} style={styles.cover} contentFit="cover" />
                     </Pressable>
@@ -550,9 +542,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   loginPanel: {
     gap: Spacing.three,
@@ -648,6 +647,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.two,
     borderRadius: Spacing.two,
+  },
+  compactMangaCard: {
+    width: '100%',
+    maxWidth: '100%',
+    flexBasis: '100%',
+    flexGrow: 0,
   },
   cover: {
     width: '100%',

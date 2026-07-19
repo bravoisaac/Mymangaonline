@@ -3,17 +3,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   EXTENSIONS_INDEX_URL,
@@ -36,7 +35,7 @@ const API_FIELDS = [
 
 export default function ApiInspectionScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const [extensions, setExtensions] = useState<MangaExtension[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,13 +71,6 @@ export default function ApiInspectionScreen() {
   }, []);
 
   const stats = useMemo(() => buildExtensionStats(extensions), [extensions]);
-  const contentInset = {
-    top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-    left: safeAreaInsets.left,
-    right: safeAreaInsets.right,
-  };
-
   if (isLoading) {
     return (
       <ThemedView style={styles.centered}>
@@ -117,8 +109,8 @@ export default function ApiInspectionScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           API Keiyoushi
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -240,9 +232,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   metrics: {
     flexDirection: 'row',

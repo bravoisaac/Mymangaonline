@@ -1,20 +1,19 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import { getHomeMangaFromApi, getSourceLabel } from '@/services/mymangaonline-api';
 import {
@@ -30,22 +29,12 @@ const MANGA_CARD_STEP = MANGA_CARD_WIDTH + MANGA_CARD_GAP;
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const [language, setLanguage] = useState<MangaLanguage>(DEFAULT_MANGA_LANGUAGE);
   const [popularManga, setPopularManga] = useState<MangaSearchResult[]>([]);
   const [updatedManga, setUpdatedManga] = useState<MangaSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
 
   useEffect(() => {
     let isMounted = true;
@@ -107,8 +96,8 @@ export default function HomeScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.hero}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.hero, isCompact && styles.compactHero]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           My Manga Online
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
@@ -118,8 +107,9 @@ export default function HomeScreen() {
       </View>
 
       <ThemedView type="backgroundElement" style={styles.languagePanel}>
-        <View style={styles.panelHeader}>
-          <View>
+        <View style={[styles.panelHeader, isCompact && styles.compactPanelHeader]}>
+          <View
+            style={[styles.panelHeaderText, isCompact && styles.compactPanelHeaderText]}>
             <ThemedText type="smallBold">Idioma de lectura</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               Filtra populares, actualizados y busqueda. Espanol incluye ES-419.
@@ -127,7 +117,11 @@ export default function HomeScreen() {
           </View>
           <Pressable
             onPress={() => router.push('/reader')}
-            style={({ pressed }) => [styles.exploreButton, pressed && styles.pressed]}>
+            style={({ pressed }) => [
+              styles.exploreButton,
+              isCompact && styles.compactExploreButton,
+              pressed && styles.pressed,
+            ]}>
             <ThemedText type="smallBold" style={styles.primaryText}>
               Explorar
             </ThemedText>
@@ -319,9 +313,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingTop: Spacing.four,
   },
+  compactHero: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   subtitle: {
     maxWidth: 640,
@@ -338,12 +339,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.three,
   },
+  compactPanelHeader: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+  },
+  panelHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    gap: Spacing.half,
+  },
+  compactPanelHeaderText: {
+    width: '100%',
+    flex: 0,
+  },
   exploreButton: {
     minHeight: 42,
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
     backgroundColor: '#2364d2',
+  },
+  compactExploreButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
   },
   languageRow: {
     flexDirection: 'row',

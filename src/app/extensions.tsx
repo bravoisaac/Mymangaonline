@@ -11,11 +11,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   EXTENSIONS_INDEX_URL,
@@ -34,7 +35,7 @@ const DEFAULT_VISIBLE_COUNT = 80;
 
 export default function ExtensionsScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const [extensions, setExtensions] = useState<MangaExtension[]>([]);
   const [query, setQuery] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('all');
@@ -89,8 +90,6 @@ export default function ExtensionsScreen() {
   const visibleExtensions = filteredExtensions.slice(0, visibleCount);
   const safeCount = extensions.filter((extension) => extension.nsfw !== 1).length;
   const nsfwCount = extensions.length - safeCount;
-
-  const contentBottomInset = safeAreaInsets.bottom + BottomTabInset + Spacing.five;
 
   function loadMore() {
     setVisibleCount((currentCount) =>
@@ -226,11 +225,16 @@ export default function ExtensionsScreen() {
           renderItem={renderExtension}
           keyExtractor={(item) => item.pkg}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomInset }]}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: contentInset.bottom },
+          ]}
           ListHeaderComponent={
-            <View style={styles.header}>
+            <View style={[styles.header, isCompact && styles.compactHeader]}>
               <View style={styles.hero}>
-                <ThemedText type="title" style={styles.title}>
+                <ThemedText
+                  type="title"
+                  style={[styles.title, isCompact && styles.compactTitle]}>
                   My Manga Online
                 </ThemedText>
                 <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
@@ -418,6 +422,9 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingTop: Platform.select({ web: 92, default: Spacing.three }),
   },
+  compactHeader: {
+    paddingTop: Spacing.three,
+  },
   hero: {
     gap: Spacing.two,
     paddingTop: Spacing.four,
@@ -425,6 +432,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   subtitle: {
     maxWidth: 620,

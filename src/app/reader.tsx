@@ -5,18 +5,17 @@ import {
   ActivityIndicator,
   FlatList,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   getAllMangaLibraryFromApi,
@@ -104,7 +103,7 @@ function getVisiblePageNumbers(currentPage: number, pageCount: number) {
 
 export default function ReaderScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const params = useLocalSearchParams();
   const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
@@ -167,16 +166,6 @@ export default function ReaderScreen() {
       : `${filteredCategories.length} disponibles`;
   const distributorLabel =
     DISTRIBUTOR_FILTERS.find((item) => item.key === distributorFilter)?.label ?? 'Todas';
-
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
 
   const runSearch = useCallback(async (nextQuery: string, nextLanguage: MangaLanguage) => {
     if (!nextQuery.trim()) {
@@ -423,8 +412,8 @@ export default function ReaderScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -466,6 +455,7 @@ export default function ReaderScreen() {
               onPress={handleSearch}
               style={({ pressed, hovered }) => [
                 styles.searchButton,
+                isCompact && styles.compactSearchButton,
                 isSearching && styles.disabled,
                 hovered && !isSearching && styles.searchButtonInteractive,
                 pressed && styles.pressed,
@@ -517,7 +507,7 @@ export default function ReaderScreen() {
         </View>
 
         <View style={[styles.panelSection, styles.filterBlock]}>
-          <View style={styles.filterHeader}>
+          <View style={[styles.filterHeader, isCompact && styles.compactFilterHeader]}>
             <View style={styles.filterHeaderText}>
               <ThemedText type="smallBold" style={styles.panelSectionTitle}>
                 Filtros
@@ -779,7 +769,11 @@ export default function ReaderScreen() {
               <Pressable
                 key={`${item.source ?? 'mangadex'}:${item.id}`}
                 onPress={() => openManga(item)}
-                style={({ pressed }) => [styles.libraryCard, pressed && styles.pressed]}>
+                style={({ pressed }) => [
+                  styles.libraryCard,
+                  isCompact && styles.compactLibraryCard,
+                  pressed && styles.pressed,
+                ]}>
                 <Image source={{ uri: item.coverUrl }} style={styles.libraryCover} contentFit="cover" />
                 <View style={styles.libraryInfo}>
                   <ThemedText type="smallBold" numberOfLines={2}>
@@ -892,9 +886,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   searchPanel: {
     gap: Spacing.four,
@@ -946,6 +947,9 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     backgroundColor: '#2364d2',
   },
+  compactSearchButton: {
+    width: '100%',
+  },
   searchButtonInteractive: {
     backgroundColor: '#1d56b6',
   },
@@ -982,6 +986,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
+  },
+  compactFilterHeader: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
   },
   filterHeaderText: {
     flex: 1,
@@ -1144,6 +1152,12 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
+  },
+  compactLibraryCard: {
+    width: '100%',
+    maxWidth: '100%',
+    flexBasis: '100%',
+    flexGrow: 0,
   },
   libraryCover: {
     width: '100%',

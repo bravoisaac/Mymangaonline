@@ -3,17 +3,16 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   MANGA_LANGUAGES,
@@ -58,7 +57,7 @@ function getInitialChapterOrder(value: string | string[] | undefined): 'asc' | '
 
 export default function ChapterScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const params = useLocalSearchParams();
   const router = useRouter();
   const mangaId = getParam(params.mangaId);
@@ -116,16 +115,6 @@ export default function ChapterScreen() {
   const canLoadPreviousChapter = chapterOrder === 'desc' ? hasLaterBatch : hasEarlierBatch;
   const canLoadNextChapter = chapterOrder === 'desc' ? hasEarlierBatch : hasLaterBatch;
   const isNavigatingChapters = isLoadingPrevious || isLoadingNext;
-
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
 
   useEffect(() => {
     if (!mangaId || !chapterId) {
@@ -295,8 +284,8 @@ export default function ChapterScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -443,9 +432,16 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 36,
     lineHeight: 42,
+  },
+  compactTitle: {
+    fontSize: 30,
+    lineHeight: 36,
   },
   controls: {
     minHeight: 72,

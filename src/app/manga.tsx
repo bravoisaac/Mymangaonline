@@ -3,17 +3,16 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   MANGA_LANGUAGES,
@@ -73,7 +72,7 @@ function formatChapterDate(value: string | undefined) {
 
 export default function MangaScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const params = useLocalSearchParams();
   const router = useRouter();
   const mangaId = getParam(params.mangaId);
@@ -117,16 +116,6 @@ export default function MangaScreen() {
   const displayedChapters = chapters;
   const firstChapter = chapters[0];
   const chapterLanguageLabel = firstChapter?.language?.toUpperCase() ?? language.toUpperCase();
-
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
 
   useEffect(() => {
     if (!mangaId) {
@@ -257,7 +246,7 @@ export default function MangaScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
         <Pressable onPress={() => router.back()}>
           <ThemedText type="linkPrimary">{'< Volver a busqueda'}</ThemedText>
         </Pressable>
@@ -276,10 +265,18 @@ export default function MangaScreen() {
         <LoadingRow label="Cargando lobby del manga..." />
       ) : manga ? (
         <>
-          <ThemedView type="backgroundElement" style={styles.mangaDetail}>
-            <Image source={{ uri: manga.coverUrl }} style={styles.detailCover} contentFit="cover" />
-            <View style={styles.detailInfo}>
-              <ThemedText type="title" style={styles.detailTitle}>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.mangaDetail, isCompact && styles.compactMangaDetail]}>
+            <Image
+              source={{ uri: manga.coverUrl }}
+              style={[styles.detailCover, isCompact && styles.compactDetailCover]}
+              contentFit="cover"
+            />
+            <View style={[styles.detailInfo, isCompact && styles.compactDetailInfo]}>
+              <ThemedText
+                type="title"
+                style={[styles.detailTitle, isCompact && styles.compactDetailTitle]}>
                 {manga.title} - {sourceLabel}
               </ThemedText>
               <ThemedText type="default" themeColor="textSecondary" numberOfLines={5}>
@@ -310,6 +307,7 @@ export default function MangaScreen() {
                   onPress={() => openChapter(firstChapter)}
                   style={({ pressed }) => [
                     styles.startButton,
+                    isCompact && styles.compactActionButton,
                     !firstChapter && styles.disabled,
                     pressed && styles.pressed,
                   ]}>
@@ -317,7 +315,9 @@ export default function MangaScreen() {
                     Empezar a leer
                   </ThemedText>
                 </Pressable>
-                <ThemedView type="backgroundElement" style={styles.counterButton}>
+                <ThemedView
+                  type="backgroundElement"
+                  style={[styles.counterButton, isCompact && styles.compactActionButton]}>
                   <ThemedText type="smallBold" themeColor="textSecondary">
                     Capitulos {chapterTotal}
                   </ThemedText>
@@ -326,6 +326,7 @@ export default function MangaScreen() {
                   onPress={toggleSavedManga}
                   style={({ pressed }) => [
                     styles.saveButton,
+                    isCompact && styles.compactActionButton,
                     isSaved && styles.saveButtonActive,
                     pressed && styles.pressed,
                   ]}>
@@ -365,6 +366,7 @@ export default function MangaScreen() {
                       onPress={() => openChapter(chapter)}
                       style={({ pressed }) => [
                         styles.chapterRow,
+                        isCompact && styles.compactChapterRow,
                         isViewed && styles.chapterRowViewed,
                         pressed && styles.pressed,
                       ]}>
@@ -382,7 +384,11 @@ export default function MangaScreen() {
                           {chapter.language ? ` - ${chapter.language.toUpperCase()}` : ''}
                         </ThemedText>
                       </View>
-                      <View style={styles.chapterMetaRight}>
+                      <View
+                        style={[
+                          styles.chapterMetaRight,
+                          isCompact && styles.compactChapterMetaRight,
+                        ]}>
                         {isViewed && (
                           <View style={styles.viewedPill}>
                             <ThemedText type="code" style={styles.viewedPillText}>
@@ -462,6 +468,9 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   primaryButtonText: {
     color: '#ffffff',
   },
@@ -472,11 +481,19 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.two,
   },
+  compactMangaDetail: {
+    flexDirection: 'column',
+  },
   detailCover: {
     width: 180,
     height: 270,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
+  },
+  compactDetailCover: {
+    width: 160,
+    height: 240,
+    alignSelf: 'center',
   },
   detailInfo: {
     flex: 1,
@@ -484,9 +501,17 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     justifyContent: 'center',
   },
+  compactDetailInfo: {
+    width: '100%',
+    minWidth: 0,
+  },
   detailTitle: {
     fontSize: 36,
     lineHeight: 42,
+  },
+  compactDetailTitle: {
+    fontSize: 30,
+    lineHeight: 36,
   },
   detailMeta: {
     flexDirection: 'row',
@@ -528,6 +553,10 @@ const styles = StyleSheet.create({
   },
   saveButtonActive: {
     backgroundColor: '#147d55',
+  },
+  compactActionButton: {
+    width: '100%',
+    alignItems: 'center',
   },
   pill: {
     minHeight: 24,
@@ -591,6 +620,11 @@ const styles = StyleSheet.create({
     borderLeftColor: '#147d55',
     backgroundColor: 'rgba(20, 125, 85, 0.12)',
   },
+  compactChapterRow: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: Spacing.two,
+  },
   chapterInfo: {
     flex: 1,
     minWidth: 0,
@@ -599,6 +633,12 @@ const styles = StyleSheet.create({
     minWidth: 116,
     alignItems: 'flex-end',
     gap: Spacing.one,
+  },
+  compactChapterMetaRight: {
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   viewedPill: {
     minHeight: 22,

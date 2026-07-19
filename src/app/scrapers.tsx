@@ -4,18 +4,17 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   getScraperChapterPagesFromApi,
@@ -74,7 +73,7 @@ function getVisiblePageNumbers(currentPage: number, pageCount: number) {
 
 export default function ScrapersScreen() {
   const theme = useTheme();
-  const safeAreaInsets = useSafeAreaInsets();
+  const { contentInset, isCompact } = useResponsiveLayout();
   const router = useRouter();
   const params = useLocalSearchParams();
   const routeProviderId = getParam(params.providerId);
@@ -125,16 +124,6 @@ export default function ScrapersScreen() {
 
     return new Set(currentUserId ? getSavedMangas(currentUserId).map((manga) => manga.id) : []);
   }, [currentUserId, savedVersion]);
-  const contentInset = useMemo(
-    () => ({
-      top: Platform.select({ web: 92, default: safeAreaInsets.top + Spacing.three }),
-      bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.five,
-      left: safeAreaInsets.left,
-      right: safeAreaInsets.right,
-    }),
-    [safeAreaInsets],
-  );
-
   const runSearch = useCallback(async (nextQuery: string, providerId: string) => {
     if (!nextQuery.trim()) {
       return;
@@ -382,8 +371,8 @@ export default function ScrapersScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>
+      <View style={[styles.header, isCompact && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
           Explorar con scrapers
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
@@ -417,6 +406,7 @@ export default function ScrapersScreen() {
               onPress={handleSearch}
               style={({ pressed }) => [
                 styles.searchButton,
+                isCompact && styles.compactSearchButton,
                 isSearching && styles.disabled,
                 pressed && styles.pressed,
               ]}>
@@ -554,6 +544,7 @@ export default function ScrapersScreen() {
                   key={`${manga.providerId}:${manga.id}`}
                   style={[
                     styles.resultCard,
+                    isCompact && styles.compactResultCard,
                     selectedManga?.id === manga.id &&
                       selectedManga.providerId === manga.providerId &&
                       styles.resultCardActive,
@@ -880,9 +871,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingTop: Spacing.four,
   },
+  compactHeader: {
+    paddingTop: 0,
+  },
   title: {
     fontSize: 42,
     lineHeight: 46,
+  },
+  compactTitle: {
+    fontSize: 36,
+    lineHeight: 40,
   },
   subtitle: {
     maxWidth: 640,
@@ -934,6 +932,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
     backgroundColor: '#2364d2',
+  },
+  compactSearchButton: {
+    width: '100%',
   },
   providerBlock: {
     paddingTop: Spacing.three,
@@ -1040,6 +1041,12 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
+  },
+  compactResultCard: {
+    width: '100%',
+    maxWidth: '100%',
+    flexBasis: '100%',
+    flexGrow: 0,
   },
   resultOpenArea: {
     flex: 1,
