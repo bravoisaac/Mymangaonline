@@ -1,10 +1,10 @@
 import { Image, type ImageLoadEventData } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -91,7 +91,6 @@ export default function ChapterScreen() {
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterTotal, setChapterTotal] = useState(0);
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
-  const [pageAspectRatios, setPageAspectRatios] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
   const [isLoadingNext, setIsLoadingNext] = useState(false);
@@ -150,7 +149,6 @@ export default function ChapterScreen() {
         setChapters(chapterFeed.chapters);
         setChapterTotal(Math.max(chapterFeed.total, nextManga?.chapterCount ?? 0));
         setChapterPages(nextPages);
-        setPageAspectRatios({});
         markChapterViewed(nextMangaId, nextChapterId, language);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el capitulo');
@@ -257,22 +255,8 @@ export default function ChapterScreen() {
     }
   }
 
-  function handlePageLoad(pageUrl: string, event: ImageLoadEventData) {
-    const width = event.source.width;
-    const height = event.source.height;
-
-    if (!width || !height) {
-      return;
-    }
-
-    setPageAspectRatios((currentAspectRatios) => ({
-      ...currentAspectRatios,
-      [pageUrl]: width / height,
-    }));
-  }
-
   return (
-    <ScrollView
+    <FlatList
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
@@ -283,54 +267,24 @@ export default function ChapterScreen() {
           paddingRight: Spacing.three + contentInset.right,
         },
       ]}
-      showsVerticalScrollIndicator={false}>
-      <View style={[styles.header, isCompact && styles.compactHeader]}>
-        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
-          {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
-        </ThemedText>
-        <ThemedText type="default" themeColor="textSecondary">
-          Capitulo {selectedChapter?.chapter ?? '...'}
-          {selectedChapter?.title ? ` - ${selectedChapter.title}` : ''}
-        </ThemedText>
-      </View>
-
-      <ChapterNavigation
-        previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
-        nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
-        isLoadingPrevious={isLoadingPrevious}
-        isLoadingNext={isLoadingNext}
-        onPrevious={() => void openAdjacentChapter('previous')}
-        onChapters={openMangaLobby}
-        onNext={() => void openAdjacentChapter('next')}
-      />
-
-      {currentError && (
-        <ThemedView type="backgroundElement" style={styles.errorPanel}>
-          <ThemedText type="smallBold">Error</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {currentError}
-          </ThemedText>
-        </ThemedView>
+      data={chapterPages?.pageUrls ?? []}
+      keyExtractor={(pageUrl, index) => `${chapterId}-${index}-${pageUrl}`}
+      renderItem={({ item, index }) => (
+        <ChapterPage pageUrl={item} pageIndex={index} chapterId={chapterId} />
       )}
+      ItemSeparatorComponent={PageSeparator}
+      ListHeaderComponent={
+        <View style={styles.readerHeader}>
+          <View style={[styles.header, isCompact && styles.compactHeader]}>
+            <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
+              {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
+            </ThemedText>
+            <ThemedText type="default" themeColor="textSecondary">
+              Capitulo {selectedChapter?.chapter ?? '...'}
+              {selectedChapter?.title ? ` - ${selectedChapter.title}` : ''}
+            </ThemedText>
+          </View>
 
-      {isLoading ? (
-        <LoadingRow label="Cargando paginas..." />
-      ) : chapterPages ? (
-        <View style={styles.reader}>
-          {chapterPages.pageUrls.map((pageUrl, index) => (
-            <Image
-              key={pageUrl}
-              source={{ uri: pageUrl }}
-              style={[
-                styles.readerPage,
-                { aspectRatio: pageAspectRatios[pageUrl] ?? 720 / 1040 },
-              ]}
-              contentFit="cover"
-              onLoad={(event) => handlePageLoad(pageUrl, event)}
-              transition={180}
-              recyclingKey={`${chapterId}-${index}`}
-            />
-          ))}
           <ChapterNavigation
             previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
             nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
@@ -340,10 +294,78 @@ export default function ChapterScreen() {
             onChapters={openMangaLobby}
             onNext={() => void openAdjacentChapter('next')}
           />
+
+          {currentError && (
+            <ThemedView type="backgroundElement" style={styles.errorPanel}>
+              <ThemedText type="smallBold">Error</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {currentError}
+              </ThemedText>
+            </ThemedView>
+          )}
+
+          {isLoading && <LoadingRow label="Cargando paginas..." />}
         </View>
-      ) : null}
-    </ScrollView>
+      }
+      ListFooterComponent={
+        chapterPages && chapterPages.pageUrls.length > 0 ? (
+          <View style={styles.readerFooter}>
+            <ChapterNavigation
+              previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
+              nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
+              isLoadingPrevious={isLoadingPrevious}
+              isLoadingNext={isLoadingNext}
+              onPrevious={() => void openAdjacentChapter('previous')}
+              onChapters={openMangaLobby}
+              onNext={() => void openAdjacentChapter('next')}
+            />
+          </View>
+        ) : null
+      }
+      initialNumToRender={2}
+      maxToRenderPerBatch={2}
+      updateCellsBatchingPeriod={80}
+      windowSize={3}
+      showsVerticalScrollIndicator={false}
+    />
   );
+}
+
+type ChapterPageProps = {
+  pageUrl: string;
+  pageIndex: number;
+  chapterId?: string;
+};
+
+const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }: ChapterPageProps) {
+  const [aspectRatio, setAspectRatio] = useState(720 / 1040);
+
+  function handleLoad(event: ImageLoadEventData) {
+    const width = event.source.width;
+    const height = event.source.height;
+
+    if (width && height) {
+      setAspectRatio(width / height);
+    }
+  }
+
+  return (
+    <Image
+      source={{ uri: pageUrl }}
+      style={[styles.readerPage, { aspectRatio }]}
+      accessibilityLabel={`Pagina ${pageIndex + 1}`}
+      contentFit="cover"
+      loading={pageIndex < 2 ? 'eager' : 'lazy'}
+      priority={pageIndex < 2 ? 'high' : 'normal'}
+      onLoad={handleLoad}
+      transition={180}
+      recyclingKey={`${chapterId}-${pageIndex}`}
+    />
+  );
+});
+
+function PageSeparator() {
+  return <View style={styles.pageSeparator} />;
 }
 
 type ChapterNavigationProps = {
@@ -470,8 +492,15 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#ffffff',
   },
-  reader: {
+  readerHeader: {
     gap: Spacing.three,
+    marginBottom: Spacing.three,
+  },
+  readerFooter: {
+    marginTop: Spacing.three,
+  },
+  pageSeparator: {
+    height: Spacing.three,
   },
   readerPage: {
     width: '100%',
