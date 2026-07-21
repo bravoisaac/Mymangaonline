@@ -531,8 +531,12 @@ export default function LibraryScreen() {
                               </View>
                             )}
                             {progress.error && (
-                              <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-                                {progress.error}
+                              <ThemedText
+                                type="small"
+                                themeColor="textSecondary"
+                                numberOfLines={2}
+                                style={isMobileLayout && styles.compactProgressError}>
+                                {isMobileLayout ? 'Error al cargar' : progress.error}
                               </ThemedText>
                             )}
                           </>
@@ -740,7 +744,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   compactMangaInfo: {
-    minHeight: 164,
+    minHeight: 124,
     gap: Spacing.half,
   },
   compactMangaTitle: {
@@ -776,6 +780,10 @@ const styles = StyleSheet.create({
     maxWidth: '52%',
     fontSize: 9,
     lineHeight: 11,
+  },
+  compactProgressError: {
+    fontSize: 8,
+    lineHeight: 10,
   },
   newChapterPill: {
     minHeight: 26,
