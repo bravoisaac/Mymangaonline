@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -34,6 +35,7 @@ import {
 
 const INITIAL_QUERY = 'one piece';
 const LIBRARY_PAGE_SIZE = 15;
+const MOBILE_LAYOUT_BREAKPOINT = 640;
 const CATEGORY_GROUPS = [
   { key: 'all', label: 'Todas' },
   { key: 'genre', label: 'Generos' },
@@ -103,7 +105,9 @@ function getVisiblePageNumbers(currentPage: number, pageCount: number) {
 
 export default function ReaderScreen() {
   const theme = useTheme();
-  const { contentInset, isCompact } = useResponsiveLayout();
+  const { width: viewportWidth } = useWindowDimensions();
+  const { contentInset } = useResponsiveLayout();
+  const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const params = useLocalSearchParams();
   const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
@@ -404,6 +408,7 @@ export default function ReaderScreen() {
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
+        isMobileLayout && styles.compactContent,
         {
           paddingTop: contentInset.top,
           paddingBottom: contentInset.bottom,
@@ -412,8 +417,8 @@ export default function ReaderScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={[styles.header, isCompact && styles.compactHeader]}>
-        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
+      <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -421,7 +426,9 @@ export default function ReaderScreen() {
         </ThemedText>
       </View>
 
-      <ThemedView type="backgroundElement" style={styles.searchPanel}>
+      <ThemedView
+        type="backgroundElement"
+        style={[styles.searchPanel, isMobileLayout && styles.compactSearchPanel]}>
         <View style={styles.panelSection}>
           <View style={styles.panelSectionHeader}>
             <ThemedText type="smallBold" style={styles.panelSectionTitle}>
@@ -444,6 +451,7 @@ export default function ReaderScreen() {
               returnKeyType="search"
               style={[
                 styles.input,
+                isMobileLayout && styles.compactInput,
                 { color: theme.text },
                 focusedField === 'query' && styles.inputFocused,
               ]}
@@ -455,7 +463,7 @@ export default function ReaderScreen() {
               onPress={handleSearch}
               style={({ pressed, hovered }) => [
                 styles.searchButton,
-                isCompact && styles.compactSearchButton,
+                isMobileLayout && styles.compactSearchButton,
                 isSearching && styles.disabled,
                 hovered && !isSearching && styles.searchButtonInteractive,
                 pressed && styles.pressed,
@@ -507,7 +515,7 @@ export default function ReaderScreen() {
         </View>
 
         <View style={[styles.panelSection, styles.filterBlock]}>
-          <View style={[styles.filterHeader, isCompact && styles.compactFilterHeader]}>
+          <View style={[styles.filterHeader, isMobileLayout && styles.compactFilterHeader]}>
             <View style={styles.filterHeaderText}>
               <ThemedText type="smallBold" style={styles.panelSectionTitle}>
                 Filtros
@@ -764,25 +772,34 @@ export default function ReaderScreen() {
             </ThemedText>
           </ThemedView>
         ) : (
-          <View style={styles.libraryGrid}>
+          <View style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
             {libraryMangas.map((item) => (
               <Pressable
+                accessibilityLabel={`Abrir ${item.title}`}
+                accessibilityRole="button"
                 key={`${item.source ?? 'mangadex'}:${item.id}`}
                 onPress={() => openManga(item)}
                 style={({ pressed }) => [
                   styles.libraryCard,
-                  isCompact && styles.compactLibraryCard,
+                  isMobileLayout && styles.compactLibraryCard,
                   pressed && styles.pressed,
                 ]}>
-                <Image source={{ uri: item.coverUrl }} style={styles.libraryCover} contentFit="cover" />
-                <View style={styles.libraryInfo}>
-                  <ThemedText type="smallBold" numberOfLines={2}>
+                <Image
+                  source={{ uri: item.coverUrl }}
+                  style={[styles.libraryCover, isMobileLayout && styles.compactLibraryCover]}
+                  contentFit="cover"
+                />
+                <View style={[styles.libraryInfo, isMobileLayout && styles.compactLibraryInfo]}>
+                  <ThemedText
+                    type="smallBold"
+                    numberOfLines={2}
+                    style={isMobileLayout && styles.compactLibraryTitle}>
                     {item.title}
                   </ThemedText>
-                  <View style={styles.mangaMeta}>
-                    <Pill text={getSourceLabel(item.source)} />
-                    {item.year && <Pill text={String(item.year)} />}
-                    {item.status && <Pill text={item.status} />}
+                  <View style={[styles.mangaMeta, isMobileLayout && styles.compactMangaMeta]}>
+                    <Pill text={getSourceLabel(item.source)} compact={isMobileLayout} />
+                    {!isMobileLayout && item.year && <Pill text={String(item.year)} />}
+                    {!isMobileLayout && item.status && <Pill text={item.status} />}
                   </View>
                 </View>
               </Pressable>
@@ -862,10 +879,14 @@ function Section({ children, title }: { children: React.ReactNode; title: string
   );
 }
 
-function Pill({ text }: { text: string }) {
+function Pill({ text, compact = false }: { text: string; compact?: boolean }) {
   return (
-    <View style={styles.pill}>
-      <ThemedText type="code" themeColor="textSecondary">
+    <View style={[styles.pill, compact && styles.compactPill]}>
+      <ThemedText
+        type="code"
+        themeColor="textSecondary"
+        numberOfLines={1}
+        style={compact && styles.compactPillText}>
         {text.toUpperCase()}
       </ThemedText>
     </View>
@@ -882,6 +903,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: Spacing.three,
   },
+  compactContent: {
+    gap: Spacing.two,
+  },
   header: {
     gap: Spacing.two,
     paddingTop: Spacing.four,
@@ -894,13 +918,17 @@ const styles = StyleSheet.create({
     lineHeight: 46,
   },
   compactTitle: {
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 34,
   },
   searchPanel: {
     gap: Spacing.four,
     padding: Spacing.three,
     borderRadius: Spacing.two,
+  },
+  compactSearchPanel: {
+    gap: Spacing.three,
+    padding: 12,
   },
   panelSection: {
     gap: Spacing.two,
@@ -938,6 +966,9 @@ const styles = StyleSheet.create({
     borderColor: '#3c87f7',
     backgroundColor: 'rgba(60, 135, 247, 0.09)',
   },
+  compactInput: {
+    minHeight: 48,
+  },
   searchButton: {
     minWidth: 112,
     minHeight: 52,
@@ -949,6 +980,7 @@ const styles = StyleSheet.create({
   },
   compactSearchButton: {
     width: '100%',
+    minHeight: 48,
   },
   searchButtonInteractive: {
     backgroundColor: '#1d56b6',
@@ -1143,6 +1175,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
+  compactLibraryGrid: {
+    gap: Spacing.one,
+  },
   libraryCard: {
     flexGrow: 1,
     flexBasis: 220,
@@ -1154,10 +1189,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
   },
   compactLibraryCard: {
-    width: '100%',
-    maxWidth: '100%',
-    flexBasis: '100%',
-    flexGrow: 0,
+    flexBasis: '29%',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '32%',
+    gap: Spacing.one,
+    padding: Spacing.one,
+    borderRadius: 6,
   },
   libraryCover: {
     width: '100%',
@@ -1165,10 +1204,21 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
+  compactLibraryCover: {
+    borderRadius: Spacing.half,
+  },
   libraryInfo: {
     flex: 1,
     minHeight: 116,
     gap: Spacing.one,
+  },
+  compactLibraryInfo: {
+    minHeight: 58,
+    gap: Spacing.half,
+  },
+  compactLibraryTitle: {
+    fontSize: 11,
+    lineHeight: 13,
   },
   paginationRow: {
     flexDirection: 'row',
@@ -1240,12 +1290,25 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     marginTop: 'auto',
   },
+  compactMangaMeta: {
+    gap: Spacing.half,
+  },
   pill: {
     minHeight: 24,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  compactPill: {
+    minHeight: 16,
+    maxWidth: '100%',
+    paddingHorizontal: Spacing.one,
+    borderRadius: Spacing.half,
+  },
+  compactPillText: {
+    fontSize: 8,
+    lineHeight: 10,
   },
   errorPanel: {
     gap: Spacing.two,

@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -35,6 +36,8 @@ import {
 } from '@/services/user-library';
 
 type AuthMode = 'login' | 'create';
+const MOBILE_LAYOUT_BREAKPOINT = 640;
+
 type MangaProgress = {
   chapterCount: number;
   latestChapter?: MangaChapter;
@@ -85,7 +88,9 @@ function getSavedMangaSourceLabel(manga: SavedManga) {
 
 export default function LibraryScreen() {
   const theme = useTheme();
-  const { contentInset, isCompact } = useResponsiveLayout();
+  const { width: viewportWidth } = useWindowDimensions();
+  const { contentInset } = useResponsiveLayout();
+  const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const router = useRouter();
   const [user, setUser] = useState<LocalUser | null>(() => getCurrentUser());
   const [authMode, setAuthMode] = useState<AuthMode>('login');
@@ -285,6 +290,7 @@ export default function LibraryScreen() {
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
+        isMobileLayout && styles.compactContent,
         {
           paddingTop: contentInset.top,
           paddingBottom: contentInset.bottom,
@@ -293,8 +299,8 @@ export default function LibraryScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
-      <View style={[styles.header, isCompact && styles.compactHeader]}>
-        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
+      <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
+        <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Mis mangas
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary">
@@ -425,7 +431,7 @@ export default function LibraryScreen() {
           </ThemedView>
 
           {savedMangas.length > 0 ? (
-            <View style={styles.libraryGrid}>
+            <View style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
               {displayedSavedMangas.map((manga) => {
                 const progress = progressByMangaId[manga.id];
 
@@ -433,51 +439,94 @@ export default function LibraryScreen() {
                   <ThemedView
                     key={manga.id}
                     type="backgroundElement"
-                    style={[styles.mangaCard, isCompact && styles.compactMangaCard]}>
-                    <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
-                      <Image source={{ uri: manga.coverUrl }} style={styles.cover} contentFit="cover" />
+                    style={[styles.mangaCard, isMobileLayout && styles.compactMangaCard]}>
+                    <Pressable
+                      accessibilityLabel={`Abrir ${manga.title || 'manga'}`}
+                      accessibilityRole="button"
+                      onPress={() => openManga(manga)}
+                      style={({ pressed }) => pressed && styles.pressed}>
+                      <Image
+                        source={{ uri: manga.coverUrl }}
+                        style={[styles.cover, isMobileLayout && styles.compactCover]}
+                        contentFit="cover"
+                      />
                     </Pressable>
-                    <View style={styles.mangaInfo}>
+                    <View style={[styles.mangaInfo, isMobileLayout && styles.compactMangaInfo]}>
                       <Pressable onPress={() => openManga(manga)} style={({ pressed }) => pressed && styles.pressed}>
-                        <ThemedText type="smallBold" numberOfLines={2}>
-                          {manga.title || 'Sin titulo'} - {getSavedMangaSourceLabel(manga)}
+                        <ThemedText
+                          type="smallBold"
+                          numberOfLines={2}
+                          style={isMobileLayout && styles.compactMangaTitle}>
+                          {manga.title || 'Sin titulo'}
+                          {!isMobileLayout && ` - ${getSavedMangaSourceLabel(manga)}`}
                         </ThemedText>
                       </Pressable>
-                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
-                        {manga.description || 'Sin descripcion disponible.'}
-                      </ThemedText>
+                      {isMobileLayout ? (
+                        <ThemedText
+                          type="code"
+                          themeColor="textSecondary"
+                          numberOfLines={1}
+                          style={styles.compactSourceText}>
+                          {getSavedMangaSourceLabel(manga).toUpperCase()}
+                        </ThemedText>
+                      ) : (
+                        <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
+                          {manga.description || 'Sin descripcion disponible.'}
+                        </ThemedText>
+                      )}
 
-                      <View style={styles.progressPanel}>
+                      <View style={[styles.progressPanel, isMobileLayout && styles.compactProgressPanel]}>
                         {progress ? (
                           <>
                             <View style={styles.progressRow}>
-                              <ThemedText type="code" themeColor="textSecondary">
-                                CAPITULOS
+                              <ThemedText
+                                type="code"
+                                themeColor="textSecondary"
+                                style={isMobileLayout && styles.compactProgressLabel}>
+                                {isMobileLayout ? 'CAPS' : 'CAPITULOS'}
                               </ThemedText>
-                              <ThemedText type="smallBold">
+                              <ThemedText type="smallBold" style={isMobileLayout && styles.compactProgressValue}>
                                 {progress.error ? '--' : progress.chapterCount}
                               </ThemedText>
                             </View>
                             <View style={styles.progressRow}>
-                              <ThemedText type="code" themeColor="textSecondary">
-                                ULTIMO VISTO
+                              <ThemedText
+                                type="code"
+                                themeColor="textSecondary"
+                                style={isMobileLayout && styles.compactProgressLabel}>
+                                {isMobileLayout ? 'VISTO' : 'ULTIMO VISTO'}
                               </ThemedText>
-                              <ThemedText type="smallBold" numberOfLines={1}>
-                                {getChapterLabel(progress.lastViewedChapter)}
+                              <ThemedText
+                                type="smallBold"
+                                numberOfLines={1}
+                                style={isMobileLayout && styles.compactProgressValue}>
+                                {isMobileLayout
+                                  ? progress.lastViewedChapter?.chapter ?? '--'
+                                  : getChapterLabel(progress.lastViewedChapter)}
                               </ThemedText>
                             </View>
                             <View style={styles.progressRow}>
-                              <ThemedText type="code" themeColor="textSecondary">
-                                DISPONIBLE
+                              <ThemedText
+                                type="code"
+                                themeColor="textSecondary"
+                                style={isMobileLayout && styles.compactProgressLabel}>
+                                {isMobileLayout ? 'ULTIMO' : 'DISPONIBLE'}
                               </ThemedText>
-                              <ThemedText type="smallBold" numberOfLines={1}>
-                                {getChapterLabel(progress.latestChapter)}
+                              <ThemedText
+                                type="smallBold"
+                                numberOfLines={1}
+                                style={isMobileLayout && styles.compactProgressValue}>
+                                {isMobileLayout
+                                  ? progress.latestChapter?.chapter ?? '--'
+                                  : getChapterLabel(progress.latestChapter)}
                               </ThemedText>
                             </View>
                             {progress.hasNewChapter && (
-                              <View style={styles.newChapterPill}>
-                                <ThemedText type="code" style={styles.newChapterText}>
-                                  NUEVO CAPITULO
+                              <View style={[styles.newChapterPill, isMobileLayout && styles.compactNewChapterPill]}>
+                                <ThemedText
+                                  type="code"
+                                  style={[styles.newChapterText, isMobileLayout && styles.compactNewChapterText]}>
+                                  {isMobileLayout ? 'NUEVO' : 'NUEVO CAPITULO'}
                                 </ThemedText>
                               </View>
                             )}
@@ -488,20 +537,32 @@ export default function LibraryScreen() {
                             )}
                           </>
                         ) : (
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText
+                            type="small"
+                            themeColor="textSecondary"
+                            style={isMobileLayout && styles.compactLoadingText}>
                             Cargando capitulos...
                           </ThemedText>
                         )}
                       </View>
 
-                      <View style={styles.cardFooter}>
-                        <View style={styles.pill}>
-                          <ThemedText type="code" themeColor="textSecondary">
+                      <View style={[styles.cardFooter, isMobileLayout && styles.compactCardFooter]}>
+                        <View style={[styles.pill, isMobileLayout && styles.compactPill]}>
+                          <ThemedText
+                            type="code"
+                            themeColor="textSecondary"
+                            style={isMobileLayout && styles.compactPillText}>
                             {(manga.scraperLanguage ?? manga.language).toUpperCase()}
                           </ThemedText>
                         </View>
-                        <Pressable onPress={() => removeManga(manga.id)} style={({ pressed }) => pressed && styles.pressed}>
-                          <ThemedText type="linkPrimary">Quitar</ThemedText>
+                        <Pressable
+                          accessibilityLabel={`Quitar ${manga.title || 'manga'}`}
+                          accessibilityRole="button"
+                          onPress={() => removeManga(manga.id)}
+                          style={({ pressed }) => pressed && styles.pressed}>
+                          <ThemedText type="linkPrimary" style={isMobileLayout && styles.compactRemoveLink}>
+                            Quitar
+                          </ThemedText>
                         </Pressable>
                       </View>
                     </View>
@@ -538,6 +599,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: Spacing.three,
   },
+  compactContent: {
+    gap: Spacing.two,
+  },
   header: {
     gap: Spacing.two,
     paddingTop: Spacing.four,
@@ -550,8 +614,8 @@ const styles = StyleSheet.create({
     lineHeight: 46,
   },
   compactTitle: {
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 34,
   },
   loginPanel: {
     gap: Spacing.three,
@@ -640,6 +704,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
+  compactLibraryGrid: {
+    gap: Spacing.one,
+  },
   mangaCard: {
     flexGrow: 1,
     flexBasis: 240,
@@ -649,10 +716,14 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
   },
   compactMangaCard: {
-    width: '100%',
-    maxWidth: '100%',
-    flexBasis: '100%',
-    flexGrow: 0,
+    flexBasis: '29%',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '32%',
+    gap: Spacing.one,
+    padding: Spacing.one,
+    borderRadius: 6,
   },
   cover: {
     width: '100%',
@@ -660,10 +731,25 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
+  compactCover: {
+    borderRadius: Spacing.half,
+  },
   mangaInfo: {
     flex: 1,
     minHeight: 224,
     gap: Spacing.one,
+  },
+  compactMangaInfo: {
+    minHeight: 164,
+    gap: Spacing.half,
+  },
+  compactMangaTitle: {
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  compactSourceText: {
+    fontSize: 8,
+    lineHeight: 10,
   },
   progressPanel: {
     gap: Spacing.one,
@@ -671,11 +757,25 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.12)',
   },
+  compactProgressPanel: {
+    gap: Spacing.half,
+    padding: Spacing.one,
+    borderRadius: Spacing.one,
+  },
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
+  },
+  compactProgressLabel: {
+    fontSize: 8,
+    lineHeight: 11,
+  },
+  compactProgressValue: {
+    maxWidth: '52%',
+    fontSize: 9,
+    lineHeight: 11,
   },
   newChapterPill: {
     minHeight: 26,
@@ -688,6 +788,18 @@ const styles = StyleSheet.create({
   newChapterText: {
     color: '#ffffff',
   },
+  compactNewChapterPill: {
+    minHeight: 18,
+    paddingHorizontal: Spacing.one,
+  },
+  compactNewChapterText: {
+    fontSize: 8,
+    lineHeight: 10,
+  },
+  compactLoadingText: {
+    fontSize: 9,
+    lineHeight: 12,
+  },
   cardFooter: {
     marginTop: 'auto',
     flexDirection: 'row',
@@ -695,12 +807,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  compactCardFooter: {
+    gap: Spacing.half,
+  },
   pill: {
     minHeight: 24,
     justifyContent: 'center',
     paddingHorizontal: Spacing.two,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.18)',
+  },
+  compactPill: {
+    minHeight: 18,
+    paddingHorizontal: Spacing.one,
+  },
+  compactPillText: {
+    fontSize: 8,
+    lineHeight: 10,
+  },
+  compactRemoveLink: {
+    fontSize: 10,
+    lineHeight: 14,
   },
   emptyPanel: {
     gap: Spacing.two,
