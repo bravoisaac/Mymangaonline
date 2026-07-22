@@ -101,7 +101,8 @@ type ChapterPagesResponse = {
 };
 
 type HomeMangaResponse = {
-  featured: MangaSearchResult[];
+  recentlyUpdated: MangaSearchResult[];
+  popular: MangaSearchResult[];
   recommended: MangaSearchResult[];
 };
 
@@ -506,9 +507,18 @@ export async function getHomeMangaFromApi(language: MangaLanguage): Promise<Home
     getAllMangaLibraryFromApi(language, 0, HOME_MANGA_LOOKAHEAD_LIMIT, { sort: 'popular' }),
   ]);
 
+  const discoveryPool = mergeMangaLists(
+    popularPage.mangas.slice(4),
+    updatedPage.mangas.slice(4),
+  );
+
   return {
-    featured: mergeMangaLists(updatedPage.mangas, popularPage.mangas).slice(0, HOME_MANGA_LIMIT),
-    recommended: popularPage.mangas.slice(0, HOME_MANGA_LIMIT),
+    recentlyUpdated: updatedPage.mangas.slice(0, HOME_MANGA_LIMIT),
+    popular: popularPage.mangas.slice(0, HOME_MANGA_LIMIT),
+    recommended: (discoveryPool.length > 0 ? discoveryPool : popularPage.mangas).slice(
+      0,
+      HOME_MANGA_LIMIT,
+    ),
   };
 }
 
