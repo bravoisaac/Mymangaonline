@@ -319,6 +319,23 @@ export function markChapterViewed(mangaId: string, chapterId: string, language: 
   return viewedChapters[chapterHistoryKey];
 }
 
+export function toggleChapterViewed(mangaId: string, chapterId: string, language: MangaLanguage) {
+  const viewerId = getCurrentViewerId();
+  const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});
+  const chapterHistoryKey = getChapterHistoryKey(mangaId, chapterId, language);
+  const isViewed = Boolean(viewedChapters[chapterHistoryKey]);
+
+  if (isViewed) {
+    delete viewedChapters[chapterHistoryKey];
+  } else {
+    viewedChapters[chapterHistoryKey] = new Date().toISOString();
+  }
+
+  writeJson(getViewedChaptersKey(viewerId), viewedChapters);
+
+  return !isViewed;
+}
+
 export function getViewedChapterIds(mangaId: string, language: MangaLanguage) {
   const viewerId = getCurrentViewerId();
   const viewedChapters = readJson<Record<string, string>>(getViewedChaptersKey(viewerId), {});

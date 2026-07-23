@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import {
   markChapterViewed,
   removeSavedManga,
   saveManga,
+  toggleChapterViewed,
 } from '@/services/user-library';
 
 type ChapterOrder = 'asc' | 'desc';
@@ -213,6 +215,15 @@ export default function MangaScreen() {
     });
   }
 
+  function handleToggleChapterViewed(chapter: MangaChapter) {
+    if (!mangaId) {
+      return;
+    }
+
+    toggleChapterViewed(mangaId, chapter.id, language);
+    refreshViewedState((current) => current + 1);
+  }
+
   function toggleSavedManga() {
     if (!manga || !mangaId) {
       return;
@@ -361,46 +372,79 @@ export default function MangaScreen() {
                   const isViewed = viewedChapterIds.has(chapter.id);
 
                   return (
-                    <Pressable
+                    <View
                       key={chapter.id}
-                      onPress={() => openChapter(chapter)}
-                      style={({ pressed }) => [
+                      style={[
                         styles.chapterRow,
                         isCompact && styles.compactChapterRow,
                         isViewed && styles.chapterRowViewed,
-                        pressed && styles.pressed,
                       ]}>
-                      <View style={styles.chapterInfo}>
-                        <ThemedText
-                          type="smallBold"
-                          themeColor={isViewed ? 'textSecondary' : undefined}
-                          numberOfLines={1}>
-                          Capitulo {chapter.chapter}
-                          {chapter.title ? ` - ${chapter.title}` : ''}
-                        </ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                          {chapter.pages} paginas
-                          {chapter.groupName ? ` - ${chapter.groupName}` : ''}
-                          {chapter.language ? ` - ${chapter.language.toUpperCase()}` : ''}
-                        </ThemedText>
-                      </View>
-                      <View
-                        style={[
-                          styles.chapterMetaRight,
-                          isCompact && styles.compactChapterMetaRight,
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Abrir capitulo ${chapter.chapter}`}
+                        onPress={() => openChapter(chapter)}
+                        style={({ pressed }) => [
+                          styles.chapterContent,
+                          isCompact && styles.compactChapterContent,
+                          pressed && styles.pressed,
                         ]}>
-                        {isViewed && (
-                          <View style={styles.viewedPill}>
-                            <ThemedText type="code" style={styles.viewedPillText}>
-                              VISTO
-                            </ThemedText>
-                          </View>
-                        )}
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {formatChapterDate(chapter.readableAt)}
-                        </ThemedText>
-                      </View>
-                    </Pressable>
+                        <View style={styles.chapterInfo}>
+                          <ThemedText
+                            type="smallBold"
+                            themeColor={isViewed ? 'textSecondary' : undefined}
+                            numberOfLines={1}>
+                            Capitulo {chapter.chapter}
+                            {chapter.title ? ` - ${chapter.title}` : ''}
+                          </ThemedText>
+                          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                            {chapter.pages} paginas
+                            {chapter.groupName ? ` - ${chapter.groupName}` : ''}
+                            {chapter.language ? ` - ${chapter.language.toUpperCase()}` : ''}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[
+                            styles.chapterMetaRight,
+                            isCompact && styles.compactChapterMetaRight,
+                          ]}>
+                          {isViewed && (
+                            <View style={styles.viewedPill}>
+                              <ThemedText type="code" style={styles.viewedPillText}>
+                                VISTO
+                              </ThemedText>
+                            </View>
+                          )}
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {formatChapterDate(chapter.readableAt)}
+                          </ThemedText>
+                        </View>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isViewed }}
+                        accessibilityLabel={
+                          isViewed
+                            ? `Marcar capitulo ${chapter.chapter} como no visto`
+                            : `Marcar capitulo ${chapter.chapter} como visto`
+                        }
+                        onPress={() => handleToggleChapterViewed(chapter)}
+                        hitSlop={4}
+                        style={({ pressed }) => [
+                          styles.viewedToggle,
+                          isViewed && styles.viewedToggleActive,
+                          pressed && styles.pressed,
+                        ]}>
+                        <SymbolView
+                          tintColor={isViewed ? '#ffffff' : theme.textSecondary}
+                          name={{
+                            ios: isViewed ? 'eye.fill' : 'eye',
+                            android: 'visibility',
+                            web: 'visibility',
+                          }}
+                          size={20}
+                        />
+                      </Pressable>
+                    </View>
                   );
                 })}
                 {chapters.length < chapterTotal && (
@@ -609,8 +653,9 @@ const styles = StyleSheet.create({
     minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
+    gap: Spacing.two,
+    paddingLeft: Spacing.three,
+    paddingRight: Spacing.two,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.14)',
@@ -621,8 +666,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20, 125, 85, 0.12)',
   },
   compactChapterRow: {
-    alignItems: 'stretch',
+    paddingLeft: Spacing.two,
+  },
+  chapterContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    minWidth: 0,
+  },
+  compactChapterContent: {
     flexDirection: 'column',
+    alignItems: 'stretch',
     gap: Spacing.two,
   },
   chapterInfo: {
@@ -649,6 +704,21 @@ const styles = StyleSheet.create({
   },
   viewedPillText: {
     color: '#ffffff',
+  },
+  viewedToggle: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.28)',
+    backgroundColor: 'rgba(120, 130, 150, 0.12)',
+  },
+  viewedToggleActive: {
+    borderColor: '#147d55',
+    backgroundColor: '#147d55',
   },
   loadingRow: {
     minHeight: 68,
