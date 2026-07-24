@@ -203,6 +203,15 @@ const HOME_MANGA_LOOKAHEAD_LIMIT = 30;
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const DEFAULT_LIBRARY_QUERY = 'one piece';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
+const CHAPTER_REQUEST_CACHE_TTL_MS = 2 * 60 * 1000;
+const CHAPTER_REQUEST_CACHE_MAX_ENTRIES = 100;
+
+type CachedApiRequest = {
+  expiresAt: number;
+  promise: Promise<unknown>;
+};
+
+const chapterRequestCache = new Map<string, CachedApiRequest>();
 
 export const MYMANGA_API_BASE_URL = (
   process.env.EXPO_PUBLIC_MYMANGA_API_URL ?? DEFAULT_API_BASE_URL
@@ -263,6 +272,44 @@ async function fetchApiJson<TResponse>(url: string) {
   }
 
   return (await response.json()) as TResponse;
+}
+
+function fetchCachedApiJson<TResponse>(url: string) {
+  const now = Date.now();
+  const cachedRequest = chapterRequestCache.get(url);
+
+  if (cachedRequest && cachedRequest.expiresAt > now) {
+    return cachedRequest.promise as Promise<TResponse>;
+  }
+
+  if (cachedRequest) {
+    chapterRequestCache.delete(url);
+  }
+
+  const promise = fetchApiJson<TResponse>(url).catch((error) => {
+    if (chapterRequestCache.get(url)?.promise === promise) {
+      chapterRequestCache.delete(url);
+    }
+
+    throw error;
+  });
+
+  chapterRequestCache.set(url, {
+    expiresAt: now + CHAPTER_REQUEST_CACHE_TTL_MS,
+    promise,
+  });
+
+  while (chapterRequestCache.size > CHAPTER_REQUEST_CACHE_MAX_ENTRIES) {
+    const oldestKey = chapterRequestCache.keys().next().value;
+
+    if (typeof oldestKey !== 'string') {
+      break;
+    }
+
+    chapterRequestCache.delete(oldestKey);
+  }
+
+  return promise;
 }
 
 function withTimeout<TValue>(promise: Promise<TValue>, timeoutMs: number, fallback: TValue) {
@@ -472,7 +519,7 @@ export async function getMangaChaptersFromApi(
   limit = 100,
   order: 'asc' | 'desc' = 'asc',
 ) {
-  const data = await fetchApiJson<ChapterFeedResponse>(
+  const data = await fetchCachedApiJson<ChapterFeedResponse>(
     buildApiUrl(`/manga/${encodeURIComponent(source)}/${encodeURIComponent(mangaId)}/chapters`, {
       lang: language,
       offset: String(Math.max(0, offset)),
@@ -490,7 +537,7 @@ export async function getMangaChaptersFromApi(
 }
 
 export async function getChapterPagesFromApi(source: MangaSourceId, chapterId: string): Promise<ChapterPages> {
-  const data = await fetchApiJson<ChapterPagesResponse>(
+  const data = await fetchCachedApiJson<ChapterPagesResponse>(
     buildApiUrl(`/manga/${encodeURIComponent(source)}/chapter/${encodeURIComponent(chapterId)}/pages`),
   );
 

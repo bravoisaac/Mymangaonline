@@ -120,45 +120,95 @@ export default function ChapterScreen() {
       return;
     }
 
+    let isActive = true;
     const nextMangaId = mangaId;
     const nextChapterId = chapterId;
 
-    async function loadChapter() {
+    async function loadChapterPages() {
       try {
-        setIsLoading(true);
         setError(null);
-        const [mangaResult, chapterResult, pagesResult] = await Promise.allSettled([
+        setChapterPages(null);
+        setIsLoading(true);
+        const nextPages = await getChapterPagesFromApi(source, nextChapterId);
+
+        if (!isActive) {
+          return;
+        }
+
+        setChapterPages(nextPages);
+        markChapterViewed(nextMangaId, nextChapterId, language);
+      } catch (loadError) {
+        if (isActive) {
+          setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el capitulo');
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    async function loadChapterContext() {
+      const [mangaResult, chapterResult] = await Promise.allSettled([
           fallbackManga
             ? Promise.resolve(fallbackManga)
             : getMangaDetailsFromApi(source, nextMangaId, language),
           getMangaChaptersFromApi(source, nextMangaId, language, chapterOffset, CHAPTER_BATCH_SIZE, chapterOrder),
-          getChapterPagesFromApi(source, nextChapterId),
-        ]);
-        if (chapterResult.status === 'rejected') {
-          throw chapterResult.reason;
-        }
-        if (pagesResult.status === 'rejected') {
-          throw pagesResult.reason;
-        }
+      ]);
 
-        const nextManga = mangaResult.status === 'fulfilled' ? mangaResult.value : fallbackManga;
+      if (!isActive) {
+        return;
+      }
+
+      const nextManga = mangaResult.status === 'fulfilled' ? mangaResult.value : fallbackManga;
+      setManga(nextManga);
+
+      if (chapterResult.status === 'fulfilled') {
         const chapterFeed = chapterResult.value;
-        const nextPages = pagesResult.value;
-
-        setManga(nextManga);
         setChapters(chapterFeed.chapters);
         setChapterTotal(Math.max(chapterFeed.total, nextManga?.chapterCount ?? 0));
-        setChapterPages(nextPages);
-        markChapterViewed(nextMangaId, nextChapterId, language);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el capitulo');
-      } finally {
-        setIsLoading(false);
+        return;
       }
+
+      const loadError = chapterResult.reason;
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Las paginas cargaron, pero no se pudo preparar la navegacion entre capitulos',
+      );
     }
 
-    void loadChapter();
+    void loadChapterPages();
+    void loadChapterContext();
+
+    return () => {
+      isActive = false;
+    };
   }, [chapterId, chapterOffset, chapterOrder, fallbackManga, mangaId, language, source]);
+
+  useEffect(() => {
+    if (!chapterPages || !nextChapter) {
+      return;
+    }
+
+    let isActive = true;
+
+    void getChapterPagesFromApi(source, nextChapter.id)
+      .then((pages) => {
+        if (!isActive || pages.pageUrls.length === 0) {
+          return;
+        }
+
+        return Image.prefetch(pages.pageUrls.slice(0, 2), 'memory-disk');
+      })
+      .catch(() => {
+        // Prefetching is opportunistic and must not interrupt the current chapter.
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [chapterPages, nextChapter, source]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -355,6 +405,7 @@ const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }:
       style={[styles.readerPage, { aspectRatio }]}
       accessibilityLabel={`Pagina ${pageIndex + 1}`}
       contentFit="cover"
+      cachePolicy="memory-disk"
       loading={pageIndex < 2 ? 'eager' : 'lazy'}
       priority={pageIndex < 2 ? 'high' : 'normal'}
       onLoad={handleLoad}
