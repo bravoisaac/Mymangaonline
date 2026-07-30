@@ -6,23 +6,31 @@ Construida con Expo, React Native, TypeScript y Expo Router. Funciona en web, An
 
 ## Capturas
 
-### Inicio
+### Inicio — escritorio
 
-Selección del idioma de lectura, mangas actualizados y títulos populares.
+Portada principal con selector de idioma, contenido destacado y accesos rápidos.
 
-![Pantalla de inicio de My Manga Online](./output/playwright/inicio.png)
+![Inicio actualizado de My Manga Online](./output/playwright/inicio-actual.png)
 
-### Explorar manga
+### Explorar
 
-Búsqueda, filtros por géneros y temas, navegación paginada y resultados combinados de MangaDex y ComicK.
+Búsqueda combinada en MangaDex y Comick, filtros, idiomas y catálogo paginado.
 
-![Pantalla para explorar manga](./output/playwright/explorar.png)
+![Explorador actualizado de My Manga Online](./output/playwright/explorar-actual.png)
 
-### Detalle del manga
+### Detalle y capítulos
 
-Sinopsis en el idioma seleccionado, etiquetas de géneros, estado, año, fuente y listado de capítulos.
+Ficha de Dandadan desde Comick con sus metadatos, géneros y los 196 capítulos disponibles, incluidos los extras.
 
-![Detalle de un manga con descripción en español](./output/playwright/detalle-manga.png)
+![Detalle actualizado de Dandadan con todos sus capítulos](./output/playwright/detalle-comick-actual.png)
+
+### Diseño adaptable
+
+La navegación, el selector de idioma y las tarjetas se reorganizan para pantallas móviles.
+
+<p align="center">
+  <img src="./output/playwright/inicio-mobile-actual.png" width="390" alt="Inicio actualizado de My Manga Online en móvil">
+</p>
 
 ## Funcionalidades
 
@@ -34,6 +42,7 @@ Sinopsis en el idioma seleccionado, etiquetas de géneros, estado, año, fuente 
 - Fichas con portada, descripción localizada, metadatos y géneros.
 - Traducción de respaldo para las sinopsis de ComicK.
 - Listado de capítulos con orden ascendente o descendente.
+- Paginación completa de capítulos de MangaDex y Comick, sin cortes por los límites de cada proveedor.
 - Registro de capítulos vistos.
 - Biblioteca personal para guardar mangas.
 - Interfaz adaptable para web y dispositivos móviles.
