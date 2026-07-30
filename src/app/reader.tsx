@@ -36,6 +36,7 @@ import {
 const INITIAL_QUERY = 'one piece';
 const LIBRARY_PAGE_SIZE = 15;
 const MOBILE_LAYOUT_BREAKPOINT = 640;
+const PAGINATION_SIBLING_COUNT = 2;
 const CATEGORY_GROUPS = [
   { key: 'all', label: 'Todas' },
   { key: 'genre', label: 'Generos' },
@@ -88,19 +89,46 @@ function getLibraryCacheKey(
 }
 
 function getVisiblePageNumbers(currentPage: number, pageCount: number) {
-  if (pageCount <= 7) {
+  const visiblePageButtonCount = PAGINATION_SIBLING_COUNT * 2 + 3;
+
+  if (pageCount <= visiblePageButtonCount) {
     return Array.from({ length: pageCount }, (_, index) => index);
   }
 
-  if (currentPage < 4) {
-    return [0, 1, 2, 3, 4, pageCount - 1];
+  const firstPage = 0;
+  const lastPage = pageCount - 1;
+  const firstInnerPage = 1;
+  const lastInnerPage = lastPage - 1;
+  const leftSibling = Math.max(currentPage - PAGINATION_SIBLING_COUNT, firstInnerPage);
+  const rightSibling = Math.min(currentPage + PAGINATION_SIBLING_COUNT, lastInnerPage);
+  const hasLeftGap = leftSibling > firstInnerPage;
+  const hasRightGap = rightSibling < lastInnerPage;
+
+  if (!hasLeftGap) {
+    return [
+      ...Array.from({ length: visiblePageButtonCount - 1 }, (_, index) => index),
+      lastPage,
+    ];
   }
 
-  if (currentPage > pageCount - 5) {
-    return [0, pageCount - 5, pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1];
+  if (!hasRightGap) {
+    return [
+      firstPage,
+      ...Array.from(
+        { length: visiblePageButtonCount - 1 },
+        (_, index) => pageCount - visiblePageButtonCount + 1 + index,
+      ),
+    ];
   }
 
-  return [0, currentPage - 1, currentPage, currentPage + 1, pageCount - 1];
+  return [
+    firstPage,
+    ...Array.from(
+      { length: PAGINATION_SIBLING_COUNT * 2 + 1 },
+      (_, index) => leftSibling + index,
+    ),
+    lastPage,
+  ];
 }
 
 export default function ReaderScreen() {
@@ -843,7 +871,7 @@ export default function ReaderScreen() {
           <ThemedText type="small" themeColor="textSecondary" style={styles.paginationStatus}>
             Pagina {libraryPage + 1} de {libraryPageCount}
           </ThemedText>
-          <View style={styles.pageNumberRow}>
+          <View style={[styles.pageNumberRow, isMobileLayout && styles.compactPageNumberRow]}>
             {visibleLibraryPages.map((pageNumber, index) => {
               const previousPageNumber = visibleLibraryPages[index - 1];
               const hasGap = previousPageNumber !== undefined && pageNumber - previousPageNumber > 1;
@@ -1322,6 +1350,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
+  },
+  compactPageNumberRow: {
+    width: '100%',
   },
   pageNumberItem: {
     minHeight: 40,
