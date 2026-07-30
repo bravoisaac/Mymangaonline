@@ -390,12 +390,13 @@ function MangaRail({
     }
 
     function handlePointerDown(event: PointerEvent) {
-      const railElement = document.getElementById(`manga-rail-${kind}`);
+      const railElement =
+        event.target instanceof Element ? event.target.closest('[id^="manga-rail-"]') : null;
 
       if (
         event.pointerType !== 'mouse' ||
         event.button !== 0 ||
-        !railElement?.contains(event.target as Node)
+        railElement?.id !== `manga-rail-${kind}`
       ) {
         return;
       }
