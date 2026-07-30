@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +29,11 @@ const MANGA_CARD_GAP = Spacing.two;
 const MANGA_CARD_STEP = MANGA_CARD_WIDTH + MANGA_CARD_GAP;
 
 type RailKind = 'updated' | 'popular' | 'recommended';
+type PointerCaptureTarget = {
+  hasPointerCapture?: (pointerId: number) => boolean;
+  releasePointerCapture?: (pointerId: number) => void;
+  setPointerCapture?: (pointerId: number) => void;
+};
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -374,16 +380,43 @@ function MangaRail({
   title: string;
 }) {
   const listRef = useRef<FlatList<MangaSearchResult>>(null);
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const scrollOffsetRef = useRef(0);
+  const dragStartOffsetRef = useRef(0);
+  const dragStartXRef = useRef(0);
+  const activePointerIdRef = useRef<number | null>(null);
+  const hasDraggedRef = useRef(false);
+  const suppressPressUntilRef = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  function finishPointerDrag(pointerId: number, currentTarget: unknown) {
+    if (activePointerIdRef.current !== pointerId) {
+      return;
+    }
+
+    const pointerTarget = currentTarget as PointerCaptureTarget;
+
+    if (pointerTarget.hasPointerCapture?.(pointerId)) {
+      pointerTarget.releasePointerCapture?.(pointerId);
+    }
+
+    if (hasDraggedRef.current) {
+      suppressPressUntilRef.current = Date.now() + 200;
+    }
+
+    activePointerIdRef.current = null;
+    hasDraggedRef.current = false;
+    setIsDragging(false);
+  }
 
   function slide(direction: 'left' | 'right') {
     const nextOffset = Math.max(
       0,
-      scrollOffset + (direction === 'right' ? MANGA_CARD_STEP * 3 : -MANGA_CARD_STEP * 3),
+      scrollOffsetRef.current +
+        (direction === 'right' ? MANGA_CARD_STEP * 3 : -MANGA_CARD_STEP * 3),
     );
 
+    scrollOffsetRef.current = nextOffset;
     listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
-    setScrollOffset(nextOffset);
   }
 
   return (
@@ -424,28 +457,88 @@ function MangaRail({
         </View>
       </View>
 
-      <FlatList
-        ref={listRef}
-        data={manga}
-        keyExtractor={(item) => `${item.source ?? 'mangadex'}:${item.id}`}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.mangaList}
-        decelerationRate="fast"
-        ListEmptyComponent={<EmptyRail />}
-        onScroll={(event) => setScrollOffset(event.nativeEvent.contentOffset.x)}
-        scrollEventThrottle={16}
-        snapToAlignment="start"
-        snapToInterval={MANGA_CARD_STEP}
-        renderItem={({ index, item }) => (
-          <MangaCard
-            index={index}
-            kind={kind}
-            manga={item}
-            onPress={() => onPress(item)}
-          />
-        )}
-      />
+      <View
+        onPointerCancel={(event) =>
+          finishPointerDrag(event.nativeEvent.pointerId, event.currentTarget)
+        }
+        onPointerDown={(event) => {
+          const { button, pageX, pointerId, pointerType } = event.nativeEvent;
+
+          if (Platform.OS !== 'web' || pointerType !== 'mouse' || button !== 0) {
+            return;
+          }
+
+          event.preventDefault();
+          activePointerIdRef.current = pointerId;
+          dragStartOffsetRef.current = scrollOffsetRef.current;
+          dragStartXRef.current = pageX;
+          hasDraggedRef.current = false;
+          (event.currentTarget as unknown as PointerCaptureTarget).setPointerCapture?.(pointerId);
+        }}
+        onPointerMove={(event) => {
+          const { pageX, pointerId } = event.nativeEvent;
+
+          if (activePointerIdRef.current !== pointerId) {
+            return;
+          }
+
+          const dragDistance = pageX - dragStartXRef.current;
+
+          if (!hasDraggedRef.current && Math.abs(dragDistance) <= 6) {
+            return;
+          }
+
+          if (!hasDraggedRef.current) {
+            hasDraggedRef.current = true;
+            setIsDragging(true);
+          }
+
+          const nextOffset = Math.max(0, dragStartOffsetRef.current - dragDistance);
+
+          suppressPressUntilRef.current = Date.now() + 200;
+          scrollOffsetRef.current = nextOffset;
+          listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
+        }}
+        onPointerUp={(event) =>
+          finishPointerDrag(event.nativeEvent.pointerId, event.currentTarget)
+        }
+        style={[
+          styles.railViewport,
+          Platform.OS === 'web' && styles.draggableRail,
+          isDragging && styles.draggingRail,
+        ]}>
+        <FlatList
+          ref={listRef}
+          accessibilityHint={
+            Platform.OS === 'web' ? 'Arrastra horizontalmente con el mouse para recorrer la lista' : undefined
+          }
+          data={manga}
+          keyExtractor={(item) => `${item.source ?? 'mangadex'}:${item.id}`}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.mangaList}
+          decelerationRate="fast"
+          ListEmptyComponent={<EmptyRail />}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.x;
+          }}
+          scrollEventThrottle={16}
+          snapToAlignment="start"
+          snapToInterval={MANGA_CARD_STEP}
+          renderItem={({ index, item }) => (
+            <MangaCard
+              index={index}
+              kind={kind}
+              manga={item}
+              onPress={() => {
+                if (Date.now() >= suppressPressUntilRef.current) {
+                  onPress(item);
+                }
+              }}
+            />
+          )}
+        />
+      </View>
     </View>
   );
 }
@@ -899,6 +992,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(120, 130, 150, 0.16)',
+  },
+  railViewport: {
+    overflow: 'hidden',
+  },
+  draggableRail: {
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  draggingRail: {
+    opacity: 0.96,
   },
   mangaList: {
     gap: MANGA_CARD_GAP,
