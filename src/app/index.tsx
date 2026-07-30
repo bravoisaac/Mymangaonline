@@ -29,11 +29,6 @@ const MANGA_CARD_GAP = Spacing.two;
 const MANGA_CARD_STEP = MANGA_CARD_WIDTH + MANGA_CARD_GAP;
 
 type RailKind = 'updated' | 'popular' | 'recommended';
-type PointerCaptureTarget = {
-  hasPointerCapture?: (pointerId: number) => boolean;
-  releasePointerCapture?: (pointerId: number) => void;
-  setPointerCapture?: (pointerId: number) => void;
-};
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -389,25 +384,86 @@ function MangaRail({
   const suppressPressUntilRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  function finishPointerDrag(pointerId: number, currentTarget: unknown) {
-    if (activePointerIdRef.current !== pointerId) {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
       return;
     }
 
-    const pointerTarget = currentTarget as PointerCaptureTarget;
+    function handlePointerDown(event: PointerEvent) {
+      const railElement = document.getElementById(`manga-rail-${kind}`);
 
-    if (pointerTarget.hasPointerCapture?.(pointerId)) {
-      pointerTarget.releasePointerCapture?.(pointerId);
+      if (
+        event.pointerType !== 'mouse' ||
+        event.button !== 0 ||
+        !railElement?.contains(event.target as Node)
+      ) {
+        return;
+      }
+
+      activePointerIdRef.current = event.pointerId;
+      dragStartOffsetRef.current = scrollOffsetRef.current;
+      dragStartXRef.current = event.pageX;
+      hasDraggedRef.current = false;
     }
 
-    if (hasDraggedRef.current) {
+    function handlePointerMove(event: PointerEvent) {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      const dragDistance = event.pageX - dragStartXRef.current;
+
+      if (!hasDraggedRef.current && Math.abs(dragDistance) <= 6) {
+        return;
+      }
+
+      if (!hasDraggedRef.current) {
+        hasDraggedRef.current = true;
+        setIsDragging(true);
+      }
+
+      event.preventDefault();
+      const nextOffset = Math.max(0, dragStartOffsetRef.current - dragDistance);
+
       suppressPressUntilRef.current = Date.now() + 200;
+      scrollOffsetRef.current = nextOffset;
+      listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
     }
 
-    activePointerIdRef.current = null;
-    hasDraggedRef.current = false;
-    setIsDragging(false);
-  }
+    function finishPointerDrag(event: PointerEvent) {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      if (hasDraggedRef.current) {
+        suppressPressUntilRef.current = Date.now() + 200;
+      }
+
+      activePointerIdRef.current = null;
+      hasDraggedRef.current = false;
+      setIsDragging(false);
+    }
+
+    function preventNativeDrag(event: DragEvent) {
+      if (activePointerIdRef.current !== null) {
+        event.preventDefault();
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('dragstart', preventNativeDrag);
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
+    document.addEventListener('pointerup', finishPointerDrag);
+    document.addEventListener('pointercancel', finishPointerDrag);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('dragstart', preventNativeDrag);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', finishPointerDrag);
+      document.removeEventListener('pointercancel', finishPointerDrag);
+    };
+  }, [kind]);
 
   function slide(direction: 'left' | 'right') {
     const nextOffset = Math.max(
@@ -459,50 +515,7 @@ function MangaRail({
       </View>
 
       <View
-        onPointerCancel={(event) =>
-          finishPointerDrag(event.nativeEvent.pointerId, event.currentTarget)
-        }
-        onPointerDown={(event) => {
-          const { button, pageX, pointerId, pointerType } = event.nativeEvent;
-
-          if (Platform.OS !== 'web' || pointerType !== 'mouse' || button !== 0) {
-            return;
-          }
-
-          event.preventDefault();
-          activePointerIdRef.current = pointerId;
-          dragStartOffsetRef.current = scrollOffsetRef.current;
-          dragStartXRef.current = pageX;
-          hasDraggedRef.current = false;
-          (event.currentTarget as unknown as PointerCaptureTarget).setPointerCapture?.(pointerId);
-        }}
-        onPointerMove={(event) => {
-          const { pageX, pointerId } = event.nativeEvent;
-
-          if (activePointerIdRef.current !== pointerId) {
-            return;
-          }
-
-          const dragDistance = pageX - dragStartXRef.current;
-
-          if (!hasDraggedRef.current && Math.abs(dragDistance) <= 6) {
-            return;
-          }
-
-          if (!hasDraggedRef.current) {
-            hasDraggedRef.current = true;
-            setIsDragging(true);
-          }
-
-          const nextOffset = Math.max(0, dragStartOffsetRef.current - dragDistance);
-
-          suppressPressUntilRef.current = Date.now() + 200;
-          scrollOffsetRef.current = nextOffset;
-          listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
-        }}
-        onPointerUp={(event) =>
-          finishPointerDrag(event.nativeEvent.pointerId, event.currentTarget)
-        }
+        nativeID={`manga-rail-${kind}`}
         style={[
           styles.railViewport,
           Platform.OS === 'web' && styles.draggableRail,
