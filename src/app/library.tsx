@@ -300,10 +300,16 @@ export default function LibraryScreen() {
       ]}
       showsVerticalScrollIndicator={false}>
       <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
+        <View style={styles.eyebrowRow}>
+          <View style={styles.liveDot} />
+          <ThemedText type="code" style={styles.eyebrowText}>
+            GUARDA · SIGUE · CONTINÚA
+          </ThemedText>
+        </View>
         <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Mis mangas
         </ThemedText>
-        <ThemedText type="default" themeColor="textSecondary">
+        <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
           Guarda mangas en tu biblioteca local y vuelve a abrirlos desde aqui.
         </ThemedText>
       </View>
@@ -311,6 +317,9 @@ export default function LibraryScreen() {
       {!user ? (
         <ThemedView type="backgroundElement" style={styles.loginPanel}>
           <View style={styles.loginHeader}>
+            <ThemedText type="code" style={styles.panelEyebrow}>
+              ACCESO PERSONAL
+            </ThemedText>
             <ThemedText type="subtitle" style={styles.panelTitle}>
               {authMode === 'create' ? 'Crear cuenta' : 'Entrar'}
             </ThemedText>
@@ -379,9 +388,11 @@ export default function LibraryScreen() {
           />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
+            <View style={styles.formError}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {error}
+              </ThemedText>
+            </View>
           )}
 
           <Pressable
@@ -409,6 +420,9 @@ export default function LibraryScreen() {
                 <Image source={{ uri: user.pictureUrl }} style={styles.userAvatar} contentFit="cover" />
               )}
               <View style={styles.userInfo}>
+                <ThemedText type="code" style={styles.panelEyebrow}>
+                  SESIÓN LOCAL
+                </ThemedText>
                 <ThemedText type="smallBold">Usuario: {user.name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {user.email} - Correo
@@ -431,15 +445,30 @@ export default function LibraryScreen() {
           </ThemedView>
 
           {savedMangas.length > 0 ? (
-            <View style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
-              {displayedSavedMangas.map((manga) => {
-                const progress = progressByMangaId[manga.id];
+            <>
+              <View style={styles.collectionHeading}>
+                <ThemedText type="code" style={styles.sectionEyebrow}>
+                  TU COLECCIÓN
+                </ThemedText>
+                <View style={styles.collectionTitleRow}>
+                  <ThemedText type="subtitle" style={styles.collectionTitle}>
+                    Guardados
+                  </ThemedText>
+                  <ThemedText type="code" themeColor="textSecondary">
+                    {savedMangas.length} MANGAS
+                  </ThemedText>
+                </View>
+              </View>
 
-                return (
-                  <ThemedView
-                    key={manga.id}
-                    type="backgroundElement"
-                    style={[styles.mangaCard, isMobileLayout && styles.compactMangaCard]}>
+              <View style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
+                {displayedSavedMangas.map((manga) => {
+                  const progress = progressByMangaId[manga.id];
+
+                  return (
+                    <ThemedView
+                      key={manga.id}
+                      type="backgroundElement"
+                      style={[styles.mangaCard, isMobileLayout && styles.compactMangaCard]}>
                     <Pressable
                       accessibilityLabel={`Abrir ${manga.title || 'manga'}`}
                       accessibilityRole="button"
@@ -570,10 +599,11 @@ export default function LibraryScreen() {
                         </Pressable>
                       </View>
                     </View>
-                  </ThemedView>
-                );
-              })}
-            </View>
+                    </ThemedView>
+                  );
+                })}
+              </View>
+            </>
           ) : (
             <ThemedView type="backgroundElement" style={styles.emptyPanel}>
               <ThemedText type="smallBold">Todavia no guardaste mangas</ThemedText>
@@ -601,10 +631,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    gap: Spacing.three,
+    gap: Spacing.five,
   },
   compactContent: {
-    gap: Spacing.two,
+    gap: Spacing.four,
   },
   header: {
     gap: Spacing.two,
@@ -613,21 +643,46 @@ const styles = StyleSheet.create({
   compactHeader: {
     paddingTop: 0,
   },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2364d2',
+  },
+  eyebrowText: {
+    color: '#2364d2',
+    letterSpacing: 0.8,
+  },
   title: {
-    fontSize: 42,
-    lineHeight: 46,
+    maxWidth: 680,
+    fontSize: 48,
+    lineHeight: 52,
   },
   compactTitle: {
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 34,
+    lineHeight: 38,
+  },
+  subtitle: {
+    maxWidth: 650,
   },
   loginPanel: {
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    gap: Spacing.four,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   loginHeader: {
     gap: Spacing.one,
+  },
+  panelEyebrow: {
+    color: '#2364d2',
+    letterSpacing: 0.6,
   },
   panelTitle: {
     fontSize: 28,
@@ -637,7 +692,9 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
     fontSize: 16,
   },
   authModeRow: {
@@ -657,6 +714,13 @@ const styles = StyleSheet.create({
   },
   authModeButtonActive: {
     backgroundColor: '#2364d2',
+  },
+  formError: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    borderLeftWidth: 4,
+    borderLeftColor: '#b72d3b',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   primaryButton: {
     minHeight: 44,
@@ -683,9 +747,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    gap: Spacing.three,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   userInfo: {
     gap: Spacing.one,
@@ -703,6 +769,24 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
+  collectionHeading: {
+    gap: Spacing.half,
+  },
+  sectionEyebrow: {
+    color: '#2364d2',
+    letterSpacing: 0.6,
+  },
+  collectionTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  collectionTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+  },
   libraryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -717,7 +801,11 @@ const styles = StyleSheet.create({
     maxWidth: 256,
     gap: Spacing.two,
     padding: Spacing.two,
-    borderRadius: Spacing.two,
+    overflow: 'hidden',
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.24)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   compactMangaCard: {
     flexBasis: '29%',
@@ -838,10 +926,12 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   emptyPanel: {
-    gap: Spacing.two,
+    gap: Spacing.three,
     alignItems: 'flex-start',
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   pressed: {
     opacity: 0.72,

@@ -249,6 +249,7 @@ export default function MangaScreen() {
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
+        isCompact && styles.compactContent,
         {
           paddingTop: contentInset.top,
           paddingBottom: contentInset.bottom,
@@ -258,8 +259,14 @@ export default function MangaScreen() {
       ]}
       showsVerticalScrollIndicator={false}>
       <View style={[styles.header, isCompact && styles.compactHeader]}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="linkPrimary">{'< Volver a busqueda'}</ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Volver a la búsqueda"
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.backButtonText}>
+            {'← Volver a búsqueda'}
+          </ThemedText>
         </Pressable>
       </View>
 
@@ -285,12 +292,22 @@ export default function MangaScreen() {
               contentFit="cover"
             />
             <View style={[styles.detailInfo, isCompact && styles.compactDetailInfo]}>
+              <View style={styles.detailEyebrowRow}>
+                <View style={styles.detailEyebrowDot} />
+                <ThemedText type="code" style={styles.detailEyebrow}>
+                  {`FICHA · ${sourceLabel.toUpperCase()}`}
+                </ThemedText>
+              </View>
               <ThemedText
                 type="title"
                 style={[styles.detailTitle, isCompact && styles.compactDetailTitle]}>
-                {manga.title} - {sourceLabel}
+                {manga.title}
               </ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" numberOfLines={5}>
+              <ThemedText
+                type="default"
+                themeColor="textSecondary"
+                numberOfLines={5}
+                style={styles.detailDescription}>
                 {manga.description || 'Sin descripcion disponible.'}
               </ThemedText>
               <View style={styles.detailMeta}>
@@ -302,8 +319,8 @@ export default function MangaScreen() {
               </View>
               {manga.genres && manga.genres.length > 0 && (
                 <View style={styles.genreSection}>
-                  <ThemedText type="smallBold" themeColor="textSecondary">
-                    Géneros
+                  <ThemedText type="code" style={styles.detailSectionLabel}>
+                    GÉNEROS
                   </ThemedText>
                   <View style={styles.genreList}>
                     {manga.genres.map((genre) => (
@@ -351,17 +368,28 @@ export default function MangaScreen() {
 
           <View style={styles.chapterArea}>
             <View style={styles.chapterHeader}>
-              <View>
-                <ThemedText type="subtitle">Capitulos {chapterTotal}</ThemedText>
+              <View style={styles.chapterHeadingText}>
+                <ThemedText type="code" style={styles.sectionEyebrow}>
+                  LISTA DE LECTURA
+                </ThemedText>
+                <ThemedText type="subtitle" style={styles.chapterTitle}>
+                  Capítulos {chapterTotal}
+                </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Elige un capitulo para abrir el lector.
+                  Elige un capítulo para abrir el lector.
                 </ThemedText>
               </View>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  chapterOrder === 'desc'
+                    ? 'Ordenar capítulos desde el primero'
+                    : 'Ordenar capítulos desde el más reciente'
+                }
                 onPress={() => setChapterOrder((current) => (current === 'desc' ? 'asc' : 'desc'))}
-                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-                <ThemedText type="subtitle" style={styles.primaryButtonText}>
-                  {chapterOrder === 'desc' ? 'v' : '^'}
+                style={({ pressed }) => [styles.orderButton, pressed && styles.pressed]}>
+                <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                  {chapterOrder === 'desc' ? 'Recientes ↓' : 'Primeros ↑'}
                 </ThemedText>
               </Pressable>
             </View>
@@ -507,13 +535,30 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    gap: Spacing.three,
+    gap: Spacing.five,
+  },
+  compactContent: {
+    gap: Spacing.four,
   },
   header: {
     paddingTop: Spacing.four,
   },
   compactHeader: {
     paddingTop: 0,
+  },
+  backButton: {
+    minHeight: 40,
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    borderRadius: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+  },
+  backButtonText: {
+    color: '#4c8bf5',
   },
   primaryButtonText: {
     color: '#ffffff',
@@ -522,21 +567,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.four,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   compactMangaDetail: {
     flexDirection: 'column',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
   },
   detailCover: {
-    width: 180,
-    height: 270,
-    borderRadius: Spacing.one,
+    width: 208,
+    height: 312,
+    borderRadius: Spacing.three,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
   compactDetailCover: {
-    width: 160,
-    height: 240,
+    width: 176,
+    height: 264,
     alignSelf: 'center',
   },
   detailInfo: {
@@ -549,13 +599,32 @@ const styles = StyleSheet.create({
     width: '100%',
     minWidth: 0,
   },
+  detailEyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  detailEyebrowDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#2364d2',
+  },
+  detailEyebrow: {
+    color: '#4c8bf5',
+    letterSpacing: 0.8,
+  },
   detailTitle: {
     fontSize: 36,
     lineHeight: 42,
   },
   compactDetailTitle: {
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 28,
+    lineHeight: 34,
+  },
+  detailDescription: {
+    lineHeight: 24,
+    maxWidth: 720,
   },
   detailMeta: {
     flexDirection: 'row',
@@ -564,6 +633,10 @@ const styles = StyleSheet.create({
   },
   genreSection: {
     gap: Spacing.one,
+  },
+  detailSectionLabel: {
+    color: '#4c8bf5',
+    letterSpacing: 0.6,
   },
   genreList: {
     flexDirection: 'row',
@@ -618,22 +691,36 @@ const styles = StyleSheet.create({
     color: '#8eb7ff',
   },
   chapterArea: {
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   chapterHeader: {
-    minHeight: 62,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.one,
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.half,
   },
-  iconButton: {
-    width: 44,
+  chapterHeadingText: {
+    flex: 1,
+    minWidth: 220,
+    gap: Spacing.half,
+  },
+  sectionEyebrow: {
+    color: '#2364d2',
+    letterSpacing: 0.8,
+  },
+  chapterTitle: {
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  orderButton: {
+    minWidth: 124,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
     backgroundColor: '#2364d2',
   },
   chapterList: {
@@ -646,7 +733,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.one,
+    borderRadius: Spacing.two,
     backgroundColor: '#2364d2',
   },
   chapterRow: {
@@ -657,8 +744,10 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.three,
     paddingRight: Spacing.two,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
+    borderRadius: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.2)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   chapterRowViewed: {
     borderLeftWidth: 4,
@@ -726,12 +815,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   errorPanel: {
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(183, 45, 59, 0.35)',
     borderLeftWidth: 4,
     borderLeftColor: '#b72d3b',
   },

@@ -418,10 +418,16 @@ export default function ReaderScreen() {
       ]}
       showsVerticalScrollIndicator={false}>
       <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
+        <View style={styles.eyebrowRow}>
+          <View style={styles.liveDot} />
+          <ThemedText type="code" style={styles.eyebrowText}>
+            EXPLORA · FILTRA · DESCUBRE
+          </ThemedText>
+        </View>
         <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Explorar manga
         </ThemedText>
-        <ThemedText type="default" themeColor="textSecondary">
+        <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
           Busca en MangaDex y Comick o abre un manga desde la biblioteca. Espanol incluye ES-419.
         </ThemedText>
       </View>
@@ -570,79 +576,94 @@ export default function ReaderScreen() {
               />
 
               <View style={styles.filterControlArea}>
-                <View style={styles.filterControlGroup}>
-                  {DISTRIBUTOR_FILTERS.map((item) => {
-                    const isSelected = distributorFilter === item.key;
+                <View style={styles.filterControlSection}>
+                  <ThemedText type="code" style={styles.filterControlLabel}>
+                    FUENTE
+                  </ThemedText>
+                  <View style={styles.filterControlGroup}>
+                    {DISTRIBUTOR_FILTERS.map((item) => {
+                      const isSelected = distributorFilter === item.key;
 
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                        key={item.key}
-                        onPress={() => handleDistributorChange(item.key)}
-                        style={({ pressed, hovered }) => [
-                          styles.filterControl,
-                          isSelected && styles.filterControlSelected,
-                          hovered && !isSelected && styles.secondaryButtonInteractive,
-                          pressed && styles.pressed,
-                        ]}>
-                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
-                          {item.label}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                          key={item.key}
+                          onPress={() => handleDistributorChange(item.key)}
+                          style={({ pressed, hovered }) => [
+                            styles.filterControl,
+                            isSelected && styles.filterControlSelected,
+                            hovered && !isSelected && styles.secondaryButtonInteractive,
+                            pressed && styles.pressed,
+                          ]}>
+                          <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                            {item.label}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
 
-                <View style={styles.filterControlGroup}>
-                  {CATEGORY_GROUPS.map((item) => {
-                    const isSelected = categoryGroup === item.key;
+                <View style={styles.filterControlSection}>
+                  <ThemedText type="code" style={styles.filterControlLabel}>
+                    CATEGORÍAS
+                  </ThemedText>
+                  <View style={styles.filterControlGroup}>
+                    {CATEGORY_GROUPS.map((item) => {
+                      const isSelected = categoryGroup === item.key;
 
-                    return (
-                      <Pressable
-                        accessibilityRole="tab"
-                        accessibilityState={{ selected: isSelected }}
-                        key={item.key}
-                        onPress={() => setCategoryGroup(item.key)}
-                        style={({ pressed, hovered }) => [
-                          styles.filterControl,
-                          isSelected && styles.filterControlSelected,
-                          hovered && !isSelected && styles.secondaryButtonInteractive,
-                          pressed && styles.pressed,
-                        ]}>
-                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
-                          {item.label}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
+                      return (
+                        <Pressable
+                          accessibilityRole="tab"
+                          accessibilityState={{ selected: isSelected }}
+                          key={item.key}
+                          onPress={() => setCategoryGroup(item.key)}
+                          style={({ pressed, hovered }) => [
+                            styles.filterControl,
+                            isSelected && styles.filterControlSelected,
+                            hovered && !isSelected && styles.secondaryButtonInteractive,
+                            pressed && styles.pressed,
+                          ]}>
+                          <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                            {item.label}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
 
-                <View style={styles.filterControlGroup}>
-                  {TAG_FILTER_MODES.map((item) => {
-                    const isSelected = tagFilterMode === item.key;
+                <View style={styles.filterControlSection}>
+                  <ThemedText type="code" style={styles.filterControlLabel}>
+                    COINCIDENCIA
+                  </ThemedText>
+                  <View style={styles.filterControlGroup}>
+                    {TAG_FILTER_MODES.map((item) => {
+                      const isSelected = tagFilterMode === item.key;
 
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                        key={item.key}
-                        onPress={() => {
-                          setTagFilterMode(item.key);
-                          setLibraryPage(0);
-                        }}
-                        style={({ pressed, hovered }) => [
-                          styles.matchModeControl,
-                          isSelected && styles.matchModeControlSelected,
-                          hovered && !isSelected && styles.secondaryButtonInteractive,
-                          pressed && styles.pressed,
-                        ]}>
-                        <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
-                          {item.label}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                          key={item.key}
+                          onPress={() => {
+                            setTagFilterMode(item.key);
+                            setLibraryPage(0);
+                          }}
+                          style={({ pressed, hovered }) => [
+                            styles.matchModeControl,
+                            isSelected && styles.matchModeControlSelected,
+                            hovered && !isSelected && styles.secondaryButtonInteractive,
+                            pressed && styles.pressed,
+                          ]}>
+                          <ThemedText type="smallBold" style={isSelected && styles.primaryButtonText}>
+                            {item.label}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
               </View>
 
@@ -869,11 +890,18 @@ export default function ReaderScreen() {
 }
 
 function Section({ children, title }: { children: React.ReactNode; title: string }) {
+  const eyebrow = title === 'Resultados' ? 'COINCIDENCIAS' : 'PARA DESCUBRIR';
+
   return (
     <View style={styles.section}>
-      <ThemedText type="smallBold" style={styles.sectionTitle}>
-        {title}
-      </ThemedText>
+      <View style={styles.sectionHeading}>
+        <ThemedText type="code" style={styles.sectionEyebrow}>
+          {eyebrow}
+        </ThemedText>
+        <ThemedText type="subtitle" style={styles.sectionTitle}>
+          {title}
+        </ThemedText>
+      </View>
       {children}
     </View>
   );
@@ -901,10 +929,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    gap: Spacing.three,
+    gap: Spacing.five,
   },
   compactContent: {
-    gap: Spacing.two,
+    gap: Spacing.four,
   },
   header: {
     gap: Spacing.two,
@@ -913,22 +941,44 @@ const styles = StyleSheet.create({
   compactHeader: {
     paddingTop: 0,
   },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2364d2',
+  },
+  eyebrowText: {
+    color: '#2364d2',
+    letterSpacing: 0.8,
+  },
   title: {
-    fontSize: 42,
-    lineHeight: 46,
+    maxWidth: 680,
+    fontSize: 48,
+    lineHeight: 52,
   },
   compactTitle: {
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 34,
+    lineHeight: 38,
+  },
+  subtitle: {
+    maxWidth: 650,
   },
   searchPanel: {
     gap: Spacing.four,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   compactSearchPanel: {
     gap: Spacing.three,
-    padding: 12,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
   },
   panelSection: {
     gap: Spacing.two,
@@ -1061,11 +1111,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#2364d2',
   },
   filterPanelContent: {
-    gap: Spacing.two,
-    paddingTop: Spacing.one,
+    gap: Spacing.three,
+    paddingTop: Spacing.three,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(120, 130, 150, 0.18)',
   },
   categorySearchInput: {
-    minHeight: 46,
+    minHeight: 48,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
     borderWidth: 1,
@@ -1074,15 +1126,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   filterControlArea: {
-    gap: Spacing.two,
+    gap: Spacing.three,
+  },
+  filterControlSection: {
+    gap: Spacing.one,
+  },
+  filterControlLabel: {
+    color: '#4c8bf5',
+    letterSpacing: 0.7,
   },
   filterControlGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.one,
     padding: Spacing.one,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.1)',
+    borderRadius: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.18)',
+    backgroundColor: 'rgba(120, 130, 150, 0.08)',
   },
   filterControl: {
     flexGrow: 1,
@@ -1134,11 +1195,18 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   section: {
-    gap: Spacing.two,
+    gap: Spacing.three,
+  },
+  sectionHeading: {
+    gap: Spacing.half,
+  },
+  sectionEyebrow: {
+    color: '#2364d2',
+    letterSpacing: 0.6,
   },
   sectionTitle: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 28,
+    lineHeight: 34,
   },
   resultList: {
     gap: Spacing.two,
@@ -1158,7 +1226,9 @@ const styles = StyleSheet.create({
   libraryMessagePanel: {
     gap: Spacing.one,
     padding: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
     borderLeftWidth: 4,
     borderLeftColor: '#b72d3b',
   },
@@ -1167,8 +1237,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   libraryGrid: {
     flexDirection: 'row',
@@ -1185,8 +1257,11 @@ const styles = StyleSheet.create({
     maxWidth: 256,
     gap: Spacing.two,
     padding: Spacing.two,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
+    overflow: 'hidden',
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.24)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   compactLibraryCard: {
     flexBasis: '29%',
@@ -1270,8 +1345,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.two,
     padding: Spacing.two,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(120, 130, 150, 0.14)',
+    overflow: 'hidden',
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.24)',
+    backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
   cover: {
     width: 92,
@@ -1312,8 +1390,10 @@ const styles = StyleSheet.create({
   },
   errorPanel: {
     gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
     borderLeftWidth: 4,
     borderLeftColor: '#b72d3b',
   },
