@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Linking,
   Pressable,
   ScrollView,
@@ -762,14 +761,26 @@ export default function ReaderScreen() {
 
       {results.length > 0 && (
         <Section title="Resultados">
-          <FlatList
-            data={results}
-            keyExtractor={(item) => `${item.source ?? 'mangadex'}:${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.resultList}
-            renderItem={({ item }) => (
-              <Pressable onPress={() => openManga(item)} style={({ pressed }) => [styles.mangaCard, pressed && styles.pressed]}>
+          <View style={styles.resultSummary}>
+            <ThemedText type="small" themeColor="textSecondary">
+              {results.length} {results.length === 1 ? 'manga encontrado' : 'mangas encontrados'}
+            </ThemedText>
+            <ThemedText type="code" themeColor="textSecondary">
+              MANGADEX + COMICK
+            </ThemedText>
+          </View>
+          <View style={styles.resultGrid}>
+            {results.map((item) => (
+              <Pressable
+                accessibilityLabel={`Abrir ${item.title}`}
+                accessibilityRole="button"
+                key={`${item.source ?? 'mangadex'}:${item.id}`}
+                onPress={() => openManga(item)}
+                style={({ pressed }) => [
+                  styles.mangaCard,
+                  isMobileLayout && styles.compactMangaCard,
+                  pressed && styles.pressed,
+                ]}>
                 <Image source={{ uri: item.coverUrl }} style={styles.cover} contentFit="cover" />
                 <View style={styles.mangaInfo}>
                   <ThemedText type="smallBold" numberOfLines={2}>
@@ -785,8 +796,8 @@ export default function ReaderScreen() {
                   </View>
                 </View>
               </Pressable>
-            )}
-          />
+            ))}
+          </View>
         </Section>
       )}
 
@@ -1237,7 +1248,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 34,
   },
-  resultList: {
+  resultSummary: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  resultGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   libraryHeader: {
@@ -1372,7 +1392,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#2364d2',
   },
   mangaCard: {
-    width: 280,
+    flexGrow: 1,
+    flexBasis: 300,
+    minWidth: 280,
+    maxWidth: 396,
     minHeight: 188,
     flexDirection: 'row',
     gap: Spacing.two,
@@ -1383,9 +1406,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(120, 130, 150, 0.24)',
     backgroundColor: 'rgba(120, 130, 150, 0.1)',
   },
+  compactMangaCard: {
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    flexBasis: 'auto',
+  },
   cover: {
     width: 92,
     height: 138,
+    flexShrink: 0,
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.2)',
   },
