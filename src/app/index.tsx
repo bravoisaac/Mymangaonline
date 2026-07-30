@@ -92,6 +92,7 @@ export default function HomeScreen() {
         mangaId: manga.id,
         language,
         source: manga.source ?? 'mangadex',
+        returnTo: '/',
         title: manga.title,
         description: manga.description,
         coverUrl: manga.coverUrl ?? '',

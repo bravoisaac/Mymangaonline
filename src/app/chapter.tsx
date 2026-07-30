@@ -64,6 +64,7 @@ export default function ChapterScreen() {
   const chapterId = getParam(params.chapterId);
   const language = getInitialLanguage(params.language);
   const source = getInitialSource(params.source);
+  const returnTo = getParam(params.returnTo) ?? '/reader';
   const chapterOffset = getInitialOffset(params.chapterOffset);
   const chapterOrder = getInitialChapterOrder(params.chapterOrder);
   const sourceLabel = getSourceLabel(source);
@@ -222,6 +223,7 @@ export default function ChapterScreen() {
         mangaId,
         language,
         source,
+        returnTo,
         title: manga?.title ?? fallbackManga?.title ?? '',
         description: manga?.description ?? fallbackManga?.description ?? '',
         coverUrl: manga?.coverUrl ?? fallbackManga?.coverUrl ?? '',

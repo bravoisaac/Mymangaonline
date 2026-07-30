@@ -38,6 +38,7 @@ import {
 } from '@/services/user-library';
 
 type ChapterOrder = 'asc' | 'desc';
+type MangaReturnPath = '/' | '/reader' | '/library';
 const CHAPTER_BATCH_SIZE = 10;
 
 function getParam(value: string | string[] | undefined) {
@@ -52,6 +53,12 @@ function getInitialLanguage(value: string | string[] | undefined): MangaLanguage
 
 function getInitialSource(value: string | string[] | undefined): MangaSourceId {
   return getParam(value) ?? 'mangadex';
+}
+
+function getReturnPath(value: string | string[] | undefined): MangaReturnPath {
+  const path = getParam(value);
+
+  return path === '/' || path === '/library' ? path : '/reader';
 }
 
 function formatChapterDate(value: string | undefined) {
@@ -80,6 +87,7 @@ export default function MangaScreen() {
   const mangaId = getParam(params.mangaId);
   const language = getInitialLanguage(params.language);
   const source = getInitialSource(params.source);
+  const returnTo = getReturnPath(params.returnTo);
   const sourceLabel = getSourceLabel(source);
   const fallbackManga = useMemo<MangaSearchResult | null>(() => {
     const title = getParam(params.title);
@@ -204,6 +212,7 @@ export default function MangaScreen() {
         chapterId: chapter.id,
         language,
         source,
+        returnTo,
         chapterOffset: String(Math.floor(chapterIndex / CHAPTER_BATCH_SIZE) * CHAPTER_BATCH_SIZE),
         chapterOrder,
         title: manga?.title ?? '',
@@ -262,7 +271,7 @@ export default function MangaScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Volver a la búsqueda"
-          onPress={() => router.back()}
+          onPress={() => router.navigate(returnTo)}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
           <ThemedText type="smallBold" style={styles.backButtonText}>
             {'← Volver a búsqueda'}

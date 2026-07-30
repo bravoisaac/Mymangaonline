@@ -394,6 +394,7 @@ export default function ReaderScreen() {
         mangaId: manga.id,
         language,
         source: manga.source ?? 'mangadex',
+        returnTo: '/reader',
         title: manga.title,
         description: manga.description,
         coverUrl: manga.coverUrl ?? '',
