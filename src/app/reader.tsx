@@ -4,6 +4,7 @@ import Head from 'expo-router/head';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +35,8 @@ import {
 
 const INITIAL_QUERY = 'one piece';
 const LIBRARY_PAGE_SIZE = 15;
+const LIBRARY_CACHE_TTL_MS = 2 * 60 * 1000;
+const LIBRARY_CACHE_MAX_PAGES = 24;
 const MOBILE_LAYOUT_BREAKPOINT = 640;
 const PAGINATION_SIBLING_COUNT = 2;
 const CATEGORY_GROUPS = [
@@ -57,6 +60,7 @@ type DistributorFilter = (typeof DISTRIBUTOR_FILTERS)[number]['key'];
 type LibraryCacheEntry = {
   mangas: MangaSearchResult[];
   total: number;
+  cachedAt: number;
 };
 
 function getParam(value: string | string[] | undefined) {
@@ -85,6 +89,40 @@ function getLibraryCacheKey(
     tagFilterMode,
     distributorFilter,
   ].join('|');
+}
+
+function getFreshLibraryCacheEntry(cache: Map<string, LibraryCacheEntry>, cacheKey: string) {
+  const cachedPage = cache.get(cacheKey);
+
+  if (!cachedPage) {
+    return undefined;
+  }
+
+  if (Date.now() - cachedPage.cachedAt >= LIBRARY_CACHE_TTL_MS) {
+    cache.delete(cacheKey);
+    return undefined;
+  }
+
+  return cachedPage;
+}
+
+function setLibraryCacheEntry(
+  cache: Map<string, LibraryCacheEntry>,
+  cacheKey: string,
+  entry: LibraryCacheEntry,
+) {
+  cache.delete(cacheKey);
+  cache.set(cacheKey, entry);
+
+  while (cache.size > LIBRARY_CACHE_MAX_PAGES) {
+    const oldestKey = cache.keys().next().value;
+
+    if (typeof oldestKey !== 'string') {
+      break;
+    }
+
+    cache.delete(oldestKey);
+  }
 }
 
 function getVisiblePageNumbers(currentPage: number, pageCount: number) {
@@ -142,6 +180,10 @@ export default function ReaderScreen() {
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchRequestIdRef = useRef(0);
   const libraryCacheRef = useRef(new Map<string, LibraryCacheEntry>());
+  const libraryRequestCacheRef = useRef(new Map<string, Promise<LibraryCacheEntry>>());
+  const scrollViewRef = useRef<ScrollView>(null);
+  const librarySectionOffsetRef = useRef<number | null>(null);
+  const libraryGridOffsetRef = useRef<number | null>(null);
   const [query, setQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
   const [results, setResults] = useState<MangaSearchResult[]>([]);
@@ -199,6 +241,108 @@ export default function ReaderScreen() {
       : `${filteredCategories.length} disponibles`;
   const distributorLabel =
     DISTRIBUTOR_FILTERS.find((item) => item.key === distributorFilter)?.label ?? 'Todas';
+
+  const fetchLibraryPageOnce = useCallback(
+    async (
+      nextLanguage: MangaLanguage,
+      nextPage: number,
+      nextCategoryIds: string[],
+      nextTagFilterMode: TagFilterMode,
+      nextDistributorFilter: DistributorFilter,
+    ) => {
+      const cacheKey = getLibraryCacheKey(
+        nextLanguage,
+        nextPage,
+        nextCategoryIds,
+        nextTagFilterMode,
+        nextDistributorFilter,
+      );
+      const cachedPage = getFreshLibraryCacheEntry(libraryCacheRef.current, cacheKey);
+
+      if (cachedPage) {
+        return cachedPage;
+      }
+
+      const pendingRequest = libraryRequestCacheRef.current.get(cacheKey);
+
+      if (pendingRequest) {
+        return pendingRequest;
+      }
+
+      const request = getAllMangaLibraryFromApi(
+        nextLanguage,
+        nextPage,
+        LIBRARY_PAGE_SIZE,
+        {
+          tagIds: nextCategoryIds,
+          tagMode: nextTagFilterMode,
+          source: nextDistributorFilter,
+        },
+      ).then((nextLibraryPage) => {
+        const entry: LibraryCacheEntry = {
+          mangas: nextLibraryPage.mangas,
+          total: nextLibraryPage.total,
+          cachedAt: Date.now(),
+        };
+
+        setLibraryCacheEntry(libraryCacheRef.current, cacheKey, entry);
+        return entry;
+      });
+
+      libraryRequestCacheRef.current.set(cacheKey, request);
+      void request.then(
+        () => {
+          if (libraryRequestCacheRef.current.get(cacheKey) === request) {
+            libraryRequestCacheRef.current.delete(cacheKey);
+          }
+        },
+        () => {
+          if (libraryRequestCacheRef.current.get(cacheKey) === request) {
+            libraryRequestCacheRef.current.delete(cacheKey);
+          }
+        },
+      );
+
+      return request;
+    },
+    [],
+  );
+
+  const prefetchLibraryPage = useCallback(
+    (nextPage: number) => {
+      if (nextPage < 0 || nextPage >= libraryPageCount) {
+        return;
+      }
+
+      void fetchLibraryPageOnce(
+        language,
+        nextPage,
+        selectedCategoryIds,
+        tagFilterMode,
+        distributorFilter,
+      )
+        .then((nextPageEntry) => {
+          const coverUrls = nextPageEntry.mangas
+            .map((manga) => manga.coverUrl)
+            .filter((coverUrl): coverUrl is string => Boolean(coverUrl));
+
+          if (coverUrls.length > 0) {
+            void Image.prefetch(coverUrls, 'memory-disk').catch(() => undefined);
+          }
+        })
+        .catch(() => {
+          // Prefetch must never replace the visible page's own error handling.
+        });
+    },
+    [
+      distributorFilter,
+      fetchLibraryPageOnce,
+      language,
+      libraryPageCount,
+      selectedCategoryIds,
+      tagFilterMode,
+    ],
+  );
 
   const runSearch = useCallback(async (nextQuery: string, nextLanguage: MangaLanguage) => {
     const normalizedQuery = nextQuery.trim();
@@ -300,28 +444,29 @@ export default function ReaderScreen() {
       tagFilterMode,
       distributorFilter,
     );
-    const cachedPage = libraryCacheRef.current.get(cacheKey);
+    const cachedPage = getFreshLibraryCacheEntry(libraryCacheRef.current, cacheKey);
 
     if (cachedPage) {
       setLibraryMangas(cachedPage.mangas);
       setLibraryTotal(cachedPage.total);
+      setLibraryError(null);
+      setIsLoadingLibrary(false);
+      return;
     }
 
     async function loadLibraryPage() {
       try {
-        setIsLoadingLibrary(!cachedPage);
+        setIsLoadingLibrary(true);
         setLibraryError(null);
-        const nextPage = await getAllMangaLibraryFromApi(language, libraryPage, LIBRARY_PAGE_SIZE, {
-          tagIds: selectedCategoryIds,
-          tagMode: tagFilterMode,
-          source: distributorFilter,
-        });
+        const nextPage = await fetchLibraryPageOnce(
+          language,
+          libraryPage,
+          selectedCategoryIds,
+          tagFilterMode,
+          distributorFilter,
+        );
 
         if (isCurrentRequest) {
-          libraryCacheRef.current.set(cacheKey, {
-            mangas: nextPage.mangas,
-            total: nextPage.total,
-          });
           setLibraryMangas(nextPage.mangas);
           setLibraryTotal(nextPage.total);
         }
@@ -341,57 +486,42 @@ export default function ReaderScreen() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [language, libraryPage, selectedCategoryIds, tagFilterMode, distributorFilter]);
+  }, [
+    distributorFilter,
+    fetchLibraryPageOnce,
+    language,
+    libraryPage,
+    selectedCategoryIds,
+    tagFilterMode,
+  ]);
 
   useEffect(() => {
-    if (distributorFilter !== 'mangadex') {
+    if (isLoadingLibrary) {
       return;
     }
 
-    if (libraryPage + 1 >= libraryPageCount) {
-      return;
-    }
-
-    const nextPage = libraryPage + 1;
-    const cacheKey = getLibraryCacheKey(
+    const currentPageCacheKey = getLibraryCacheKey(
       language,
-      nextPage,
+      libraryPage,
       selectedCategoryIds,
       tagFilterMode,
       distributorFilter,
     );
 
-    if (libraryCacheRef.current.has(cacheKey)) {
+    if (!getFreshLibraryCacheEntry(libraryCacheRef.current, currentPageCacheKey)) {
       return;
     }
 
-    let isCurrentRequest = true;
-
-    async function prefetchNextPage() {
-      try {
-        const nextLibraryPage = await getAllMangaLibraryFromApi(language, nextPage, LIBRARY_PAGE_SIZE, {
-          tagIds: selectedCategoryIds,
-          tagMode: tagFilterMode,
-          source: distributorFilter,
-        });
-
-        if (isCurrentRequest) {
-          libraryCacheRef.current.set(cacheKey, {
-            mangas: nextLibraryPage.mangas,
-            total: nextLibraryPage.total,
-          });
-        }
-      } catch {
-        // Prefetch is only an optimization; visible loading keeps its own error handling.
-      }
-    }
-
-    void prefetchNextPage();
-
-    return () => {
-      isCurrentRequest = false;
-    };
-  }, [language, libraryPage, libraryPageCount, selectedCategoryIds, tagFilterMode, distributorFilter]);
+    prefetchLibraryPage(libraryPage + 1);
+  }, [
+    distributorFilter,
+    isLoadingLibrary,
+    language,
+    libraryPage,
+    prefetchLibraryPage,
+    selectedCategoryIds,
+    tagFilterMode,
+  ]);
 
   async function handleSearch() {
     await runSearch(query, language);
@@ -422,20 +552,41 @@ export default function ReaderScreen() {
     setLibraryPage(0);
   }
 
-  function openPreviousLibraryPage() {
-    setLibraryPage((currentPage) => Math.max(0, currentPage - 1));
-  }
+  function scrollToLibraryStart() {
+    const sectionOffset = librarySectionOffsetRef.current;
+    const gridOffset = libraryGridOffsetRef.current;
 
-  function openNextLibraryPage() {
-    setLibraryPage((currentPage) => Math.min(libraryPageCount - 1, currentPage + 1));
-  }
-
-  function openLibraryPage(nextPage: number) {
-    if (nextPage === libraryPage || isLoadingLibrary) {
+    if (sectionOffset === null || gridOffset === null) {
       return;
     }
 
-    setLibraryPage(Math.min(Math.max(0, nextPage), libraryPageCount - 1));
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, sectionOffset + gridOffset - Spacing.three),
+      animated: true,
+    });
+  }
+
+  function changeLibraryPage(nextPage: number) {
+    const boundedPage = Math.min(Math.max(0, nextPage), libraryPageCount - 1);
+
+    if (boundedPage === libraryPage || isLoadingLibrary) {
+      return;
+    }
+
+    scrollToLibraryStart();
+    setLibraryPage(boundedPage);
+  }
+
+  function openPreviousLibraryPage() {
+    changeLibraryPage(libraryPage - 1);
+  }
+
+  function openNextLibraryPage() {
+    changeLibraryPage(libraryPage + 1);
+  }
+
+  function openLibraryPage(nextPage: number) {
+    changeLibraryPage(nextPage);
   }
 
   function openManga(manga: MangaSearchResult) {
@@ -457,6 +608,7 @@ export default function ReaderScreen() {
 
   return (
     <ScrollView
+      ref={scrollViewRef}
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
@@ -837,7 +989,11 @@ export default function ReaderScreen() {
         </Section>
       )}
 
-      <Section title="Biblioteca">
+      <Section
+        title="Biblioteca"
+        onLayout={(event) => {
+          librarySectionOffsetRef.current = event.nativeEvent.layout.y;
+        }}>
         <View style={styles.libraryHeader}>
           <ThemedText type="small" themeColor="textSecondary">
             {selectedCategorySummary
@@ -869,8 +1025,12 @@ export default function ReaderScreen() {
             </ThemedText>
           </ThemedView>
         ) : (
-          <View style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
-            {libraryMangas.map((item) => (
+          <View
+            onLayout={(event) => {
+              libraryGridOffsetRef.current = event.nativeEvent.layout.y;
+            }}
+            style={[styles.libraryGrid, isMobileLayout && styles.compactLibraryGrid]}>
+            {libraryMangas.map((item, index) => (
               <Pressable
                 accessibilityLabel={`Abrir ${item.title}`}
                 accessibilityRole="button"
@@ -882,9 +1042,14 @@ export default function ReaderScreen() {
                   pressed && styles.pressed,
                 ]}>
                 <Image
+                  accessibilityLabel={`Portada de ${item.title}`}
+                  cachePolicy="memory-disk"
                   source={{ uri: item.coverUrl }}
                   style={[styles.libraryCover, isMobileLayout && styles.compactLibraryCover]}
                   contentFit="cover"
+                  loading={index < 3 ? 'eager' : 'lazy'}
+                  priority={index < 3 ? 'high' : 'normal'}
+                  transition={120}
                 />
                 <View style={[styles.libraryInfo, isMobileLayout && styles.compactLibraryInfo]}>
                   <ThemedText
@@ -906,7 +1071,12 @@ export default function ReaderScreen() {
 
         <View style={styles.paginationRow}>
           <Pressable
+            accessibilityLabel="Ir a la pagina anterior"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canGoToPreviousLibraryPage }}
             disabled={!canGoToPreviousLibraryPage}
+            onHoverIn={() => prefetchLibraryPage(libraryPage - 1)}
+            onPressIn={() => prefetchLibraryPage(libraryPage - 1)}
             onPress={openPreviousLibraryPage}
             style={({ pressed }) => [
               styles.paginationButton,
@@ -932,9 +1102,12 @@ export default function ReaderScreen() {
                     </ThemedText>
                   )}
                   <Pressable
+                    accessibilityLabel={`Ir a la pagina ${pageNumber + 1}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected, disabled: isLoadingLibrary }}
                     disabled={isLoadingLibrary}
+                    onHoverIn={() => prefetchLibraryPage(pageNumber)}
+                    onPressIn={() => prefetchLibraryPage(pageNumber)}
                     onPress={() => openLibraryPage(pageNumber)}
                     style={({ pressed }) => [
                       styles.pageNumberButton,
@@ -950,7 +1123,12 @@ export default function ReaderScreen() {
             })}
           </View>
           <Pressable
+            accessibilityLabel="Ir a la pagina siguiente"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canGoToNextLibraryPage }}
             disabled={!canGoToNextLibraryPage}
+            onHoverIn={() => prefetchLibraryPage(libraryPage + 1)}
+            onPressIn={() => prefetchLibraryPage(libraryPage + 1)}
             onPress={openNextLibraryPage}
             style={({ pressed }) => [
               styles.paginationButton,
@@ -965,11 +1143,19 @@ export default function ReaderScreen() {
   );
 }
 
-function Section({ children, title }: { children: React.ReactNode; title: string }) {
+function Section({
+  children,
+  onLayout,
+  title,
+}: {
+  children: React.ReactNode;
+  onLayout?: (event: LayoutChangeEvent) => void;
+  title: string;
+}) {
   const eyebrow = title === 'Resultados' ? 'COINCIDENCIAS' : 'PARA DESCUBRIR';
 
   return (
-    <View style={styles.section}>
+    <View onLayout={onLayout} style={styles.section}>
       <View style={styles.sectionHeading}>
         <ThemedText type="code" style={styles.sectionEyebrow}>
           {eyebrow}
