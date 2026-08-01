@@ -1,5 +1,6 @@
 import { Image, type ImageLoadEventData } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -326,38 +327,51 @@ export default function ChapterScreen() {
       )}
       ItemSeparatorComponent={PageSeparator}
       ListHeaderComponent={
-        <View style={styles.readerHeader}>
-          <View style={[styles.header, isCompact && styles.compactHeader]}>
-            <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
-              {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
-            </ThemedText>
-            <ThemedText type="default" themeColor="textSecondary">
-              Capitulo {selectedChapter?.chapter ?? '...'}
-              {selectedChapter?.title ? ` - ${selectedChapter.title}` : ''}
-            </ThemedText>
-          </View>
-
-          <ChapterNavigation
-            previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
-            nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
-            isLoadingPrevious={isLoadingPrevious}
-            isLoadingNext={isLoadingNext}
-            onPrevious={() => void openAdjacentChapter('previous')}
-            onChapters={openMangaLobby}
-            onNext={() => void openAdjacentChapter('next')}
-          />
-
-          {currentError && (
-            <ThemedView type="backgroundElement" style={styles.errorPanel}>
-              <ThemedText type="smallBold">Error</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {currentError}
+        <>
+          <Head>
+            <title>{manga?.title ? `Leer ${manga.title} | MyMangaOnline` : 'Lector | MyMangaOnline'}</title>
+            <meta
+              name="description"
+              content="Lector de capítulos de manga optimizado para web y dispositivos móviles."
+            />
+          </Head>
+          <View style={styles.readerHeader}>
+            <View style={[styles.header, isCompact && styles.compactHeader]}>
+              <ThemedText
+                accessibilityRole="header"
+                aria-level={1}
+                type="title"
+                style={[styles.title, isCompact && styles.compactTitle]}>
+                {manga ? `${manga.title} - ${sourceLabel}` : 'Lector'}
               </ThemedText>
-            </ThemedView>
-          )}
+              <ThemedText type="default" themeColor="textSecondary">
+                Capitulo {selectedChapter?.chapter ?? '...'}
+                {selectedChapter?.title ? ` - ${selectedChapter.title}` : ''}
+              </ThemedText>
+            </View>
 
-          {isLoading && <LoadingRow label="Cargando paginas..." />}
-        </View>
+            <ChapterNavigation
+              previousDisabled={(!previousChapter && !canLoadPreviousChapter) || isLoading || isNavigatingChapters}
+              nextDisabled={(!nextChapter && !canLoadNextChapter) || isLoading || isNavigatingChapters}
+              isLoadingPrevious={isLoadingPrevious}
+              isLoadingNext={isLoadingNext}
+              onPrevious={() => void openAdjacentChapter('previous')}
+              onChapters={openMangaLobby}
+              onNext={() => void openAdjacentChapter('next')}
+            />
+
+            {currentError && (
+              <ThemedView type="backgroundElement" style={styles.errorPanel}>
+                <ThemedText type="smallBold">Error</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {currentError}
+                </ThemedText>
+              </ThemedView>
+            )}
+
+            {isLoading && <LoadingRow label="Cargando paginas..." />}
+          </View>
+        </>
       }
       ListFooterComponent={
         chapterPages && chapterPages.pageUrls.length > 0 ? (
@@ -391,8 +405,11 @@ type ChapterPageProps = {
 
 const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }: ChapterPageProps) {
   const [aspectRatio, setAspectRatio] = useState(720 / 1040);
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   function handleLoad(event: ImageLoadEventData) {
+    setHasLoadError(false);
     const width = event.source.width;
     const height = event.source.height;
 
@@ -401,8 +418,37 @@ const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }:
     }
   }
 
+  function retryImage() {
+    setRetryCount((currentCount) => currentCount + 1);
+    setHasLoadError(false);
+  }
+
+  if (hasLoadError) {
+    return (
+      <ThemedView
+        accessibilityLiveRegion="polite"
+        type="backgroundElement"
+        style={[styles.readerPageError, { aspectRatio }]}>
+        <ThemedText type="smallBold">No se pudo cargar la pagina {pageIndex + 1}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Comprueba tu conexion o vuelve a intentarlo.
+        </ThemedText>
+        <Pressable
+          accessibilityLabel={`Reintentar pagina ${pageIndex + 1}`}
+          accessibilityRole="button"
+          onPress={retryImage}
+          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.primaryButtonText}>
+            Reintentar
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
+
   return (
     <Image
+      key={`${pageUrl}-${retryCount}`}
       source={{ uri: pageUrl }}
       style={[styles.readerPage, { aspectRatio }]}
       accessibilityLabel={`Pagina ${pageIndex + 1}`}
@@ -410,9 +456,10 @@ const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }:
       cachePolicy="memory-disk"
       loading={pageIndex < 2 ? 'eager' : 'lazy'}
       priority={pageIndex < 2 ? 'high' : 'normal'}
+      onError={() => setHasLoadError(true)}
       onLoad={handleLoad}
       transition={180}
-      recyclingKey={`${chapterId}-${pageIndex}`}
+      recyclingKey={`${chapterId}-${pageIndex}-${retryCount}`}
     />
   );
 });
@@ -444,6 +491,7 @@ function ChapterNavigation({
     <ThemedView type="backgroundElement" style={styles.controls}>
       <Pressable
         accessibilityLabel="Abrir capítulo anterior"
+        accessibilityRole="button"
         disabled={previousDisabled}
         onPress={onPrevious}
         style={({ pressed }) => [
@@ -457,6 +505,7 @@ function ChapterNavigation({
       </Pressable>
       <Pressable
         accessibilityLabel="Volver a la lista de capítulos"
+        accessibilityRole="button"
         onPress={onChapters}
         style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
         <ThemedText type="code" themeColor="textSecondary">
@@ -465,6 +514,7 @@ function ChapterNavigation({
       </Pressable>
       <Pressable
         accessibilityLabel="Abrir capítulo siguiente"
+        accessibilityRole="button"
         disabled={nextDisabled}
         onPress={onNext}
         style={({ pressed }) => [
@@ -559,6 +609,25 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: Spacing.one,
     backgroundColor: 'rgba(120, 130, 150, 0.08)',
+  },
+  readerPageError: {
+    width: '100%',
+    minHeight: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.one,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(183, 45, 59, 0.45)',
+  },
+  retryButton: {
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.one,
+    backgroundColor: '#2364d2',
   },
   loadingRow: {
     minHeight: 68,

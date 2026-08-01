@@ -203,6 +203,7 @@ const HOME_MANGA_LOOKAHEAD_LIMIT = 30;
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const DEFAULT_LIBRARY_QUERY = 'one piece';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
+const DEFAULT_API_TIMEOUT_MS = 12000;
 const CHAPTER_REQUEST_CACHE_TTL_MS = 2 * 60 * 1000;
 const CHAPTER_REQUEST_CACHE_MAX_ENTRIES = 100;
 
@@ -212,6 +213,11 @@ type CachedApiRequest = {
 };
 
 const chapterRequestCache = new Map<string, CachedApiRequest>();
+
+export type ApiRequestOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
 
 export const MYMANGA_API_BASE_URL = (
   process.env.EXPO_PUBLIC_MYMANGA_API_URL ?? DEFAULT_API_BASE_URL
@@ -260,18 +266,56 @@ function getApiImageUrl(source: string, imageUrl: string | null) {
   return imageUrl;
 }
 
-async function fetchApiJson<TResponse>(url: string) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-    },
-  });
+export function isApiAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError';
+}
 
-  if (!response.ok) {
-    throw new Error(`API_Mymangaonline respondio ${response.status}`);
+async function fetchApiJson<TResponse>(url: string, options: ApiRequestOptions = {}) {
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort();
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  if (options.signal?.aborted) {
+    abortFromCaller();
+  } else {
+    options.signal?.addEventListener('abort', abortFromCaller, { once: true });
   }
 
-  return (await response.json()) as TResponse;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(payload?.error?.message || `API_Mymangaonline respondio ${response.status}`);
+    }
+
+    return (await response.json()) as TResponse;
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`La API no respondio en ${Math.round(timeoutMs / 1000)} segundos`);
+    }
+
+    if (options.signal?.aborted || controller.signal.aborted) {
+      const abortError = new Error('Solicitud cancelada');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', abortFromCaller);
+  }
 }
 
 function fetchCachedApiJson<TResponse>(url: string) {
@@ -394,12 +438,17 @@ export async function searchMangaFromApi(
   return data.items.map(mapApiManga);
 }
 
-export async function searchAllMangaFromApi(query: string, language: MangaLanguage) {
+export async function searchAllMangaFromApi(
+  query: string,
+  language: MangaLanguage,
+  options: ApiRequestOptions = {},
+) {
   const data = await fetchApiJson<SearchAllResponse>(
     buildApiUrl('/manga/search/all', {
       q: query.trim(),
       lang: language,
     }),
+    options,
   );
 
   return data.results.flatMap((result) => result.items.map(mapApiManga));

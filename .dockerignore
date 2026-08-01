@@ -1,0 +1,8 @@
+.expo
+.git
+.github
+.playwright-cli
+dist
+node_modules
+npm-debug.log*
+output

@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -267,6 +268,13 @@ export default function MangaScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
+      <Head>
+        <title>{manga?.title ? `${manga.title} | MyMangaOnline` : 'Manga | MyMangaOnline'}</title>
+        <meta
+          name="description"
+          content={manga?.description || 'Consulta la ficha del manga y sus capítulos disponibles.'}
+        />
+      </Head>
       <View style={[styles.header, isCompact && styles.compactHeader]}>
         <Pressable
           accessibilityRole="button"
@@ -308,6 +316,8 @@ export default function MangaScreen() {
                 </ThemedText>
               </View>
               <ThemedText
+                accessibilityRole="header"
+                aria-level={1}
                 type="title"
                 style={[styles.detailTitle, isCompact && styles.compactDetailTitle]}>
                 {manga.title}

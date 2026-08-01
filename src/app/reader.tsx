@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,11 +21,11 @@ import {
   getAllMangaLibraryFromApi,
   getMangaTagsFromApi,
   getSourceLabel,
+  isApiAbortError,
   searchAllMangaFromApi,
 } from '@/services/mymangaonline-api';
 import {
   DEFAULT_MANGA_LANGUAGE,
-  MANGADEX_API_URL,
   MANGA_LANGUAGES,
   type MangaLanguage,
   type MangaSearchResult,
@@ -139,6 +139,8 @@ export default function ReaderScreen() {
   const router = useRouter();
   const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
   const hasRunInitialSearch = useRef(false);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
+  const searchRequestIdRef = useRef(0);
   const libraryCacheRef = useRef(new Map<string, LibraryCacheEntry>());
   const [query, setQuery] = useState(initialQuery);
   const [language, setLanguage] = useState<MangaLanguage>(getInitialLanguage(params.language));
@@ -199,24 +201,46 @@ export default function ReaderScreen() {
     DISTRIBUTOR_FILTERS.find((item) => item.key === distributorFilter)?.label ?? 'Todas';
 
   const runSearch = useCallback(async (nextQuery: string, nextLanguage: MangaLanguage) => {
-    if (!nextQuery.trim()) {
+    const normalizedQuery = nextQuery.trim();
+
+    if (!normalizedQuery) {
+      setError('Escribe un titulo para buscar.');
       return;
     }
 
+    searchAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestId = searchRequestIdRef.current + 1;
+    searchAbortControllerRef.current = controller;
+    searchRequestIdRef.current = requestId;
+
     try {
-      setQuery(nextQuery);
+      setQuery(normalizedQuery);
       setLanguage(nextLanguage);
       setLibraryPage(0);
       setIsSearching(true);
       setError(null);
-      const nextResults = await searchAllMangaFromApi(nextQuery, nextLanguage);
-      setResults(nextResults);
+      setResults([]);
+      const nextResults = await searchAllMangaFromApi(normalizedQuery, nextLanguage, {
+        signal: controller.signal,
+      });
+
+      if (searchRequestIdRef.current === requestId) {
+        setResults(nextResults);
+      }
     } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : 'No se pudo buscar manga');
+      if (searchRequestIdRef.current === requestId && !isApiAbortError(searchError)) {
+        setError(searchError instanceof Error ? searchError.message : 'No se pudo buscar manga');
+      }
     } finally {
-      setIsSearching(false);
+      if (searchRequestIdRef.current === requestId) {
+        searchAbortControllerRef.current = null;
+        setIsSearching(false);
+      }
     }
   }, []);
+
+  useEffect(() => () => searchAbortControllerRef.current?.abort(), []);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -445,6 +469,13 @@ export default function ReaderScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
+      <Head>
+        <title>Explorar manga | MyMangaOnline</title>
+        <meta
+          name="description"
+          content="Busca y filtra manga por idioma, categoría y fuente de contenido."
+        />
+      </Head>
       <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
         <View style={styles.eyebrowRow}>
           <View style={styles.liveDot} />
@@ -452,7 +483,11 @@ export default function ReaderScreen() {
             EXPLORA · FILTRA · DESCUBRE
           </ThemedText>
         </View>
-        <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
+        <ThemedText
+          accessibilityRole="header"
+          aria-level={1}
+          type="title"
+          style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Explorar manga
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
@@ -491,15 +526,16 @@ export default function ReaderScreen() {
               ]}
             />
             <Pressable
+              accessibilityLabel={isSearching ? 'Reemplazar busqueda actual' : 'Buscar manga'}
               accessibilityRole="button"
-              accessibilityState={{ disabled: isSearching }}
-              disabled={isSearching}
+              accessibilityState={{ busy: isSearching, disabled: !query.trim() }}
+              disabled={!query.trim()}
               onPress={handleSearch}
               style={({ pressed, hovered }) => [
                 styles.searchButton,
                 isMobileLayout && styles.compactSearchButton,
-                isSearching && styles.disabled,
-                hovered && !isSearching && styles.searchButtonInteractive,
+                !query.trim() && styles.disabled,
+                hovered && query.trim() && styles.searchButtonInteractive,
                 pressed && styles.pressed,
               ]}>
               {isSearching ? (
@@ -748,13 +784,13 @@ export default function ReaderScreen() {
       </ThemedView>
 
       {error && (
-        <ThemedView type="backgroundElement" style={styles.errorPanel}>
+        <ThemedView accessibilityLiveRegion="polite" type="backgroundElement" style={styles.errorPanel}>
           <ThemedText type="smallBold">Error</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {error}
           </ThemedText>
-          <Pressable onPress={() => Linking.openURL(`${MANGADEX_API_URL}/docs/`)}>
-            <ThemedText type="linkPrimary">Abrir documentacion de MangaDex</ThemedText>
+          <Pressable accessibilityRole="button" onPress={handleSearch}>
+            <ThemedText type="linkPrimary">Reintentar busqueda</ThemedText>
           </Pressable>
         </ThemedView>
       )}
@@ -938,7 +974,7 @@ function Section({ children, title }: { children: React.ReactNode; title: string
         <ThemedText type="code" style={styles.sectionEyebrow}>
           {eyebrow}
         </ThemedText>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>
+        <ThemedText accessibilityRole="header" aria-level={2} type="subtitle" style={styles.sectionTitle}>
           {title}
         </ThemedText>
       </View>

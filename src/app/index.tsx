@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import Head from 'expo-router/head';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -113,6 +114,13 @@ export default function HomeScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
+      <Head>
+        <title>Inicio | MyMangaOnline</title>
+        <meta
+          name="description"
+          content="Descubre mangas populares, actualizaciones recientes y nuevas recomendaciones."
+        />
+      </Head>
       <View style={[styles.hero, isCompact && styles.compactHero]}>
         <View style={styles.eyebrowRow}>
           <View style={styles.liveDot} />
@@ -120,7 +128,11 @@ export default function HomeScreen() {
             DESCUBRE · LEE · GUARDA
           </ThemedText>
         </View>
-        <ThemedText type="title" style={[styles.title, isCompact && styles.compactTitle]}>
+        <ThemedText
+          accessibilityRole="header"
+          aria-level={1}
+          type="title"
+          style={[styles.title, isCompact && styles.compactTitle]}>
           Tu próxima historia empieza aquí
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>

@@ -21,6 +21,7 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 .playwright-cli/
+output/
 
 # debug
 npm-debug.*

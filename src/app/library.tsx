@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,18 +25,18 @@ import {
   type ScraperChapter,
 } from '@/services/mymangaonline-api';
 import {
-  createEmailAccount,
+  createLocalProfile,
   getCurrentUser,
   getSavedMangas,
   getViewedChapterHistory,
-  loginWithEmail,
+  openLocalProfile,
   logoutUser,
   removeSavedManga,
   type LocalUser,
   type SavedManga,
 } from '@/services/user-library';
 
-type AuthMode = 'login' | 'create';
+type AuthMode = 'open' | 'create';
 const MOBILE_LAYOUT_BREAKPOINT = 640;
 
 type MangaProgress = {
@@ -93,10 +94,9 @@ export default function LibraryScreen() {
   const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const router = useRouter();
   const [user, setUser] = useState<LocalUser | null>(() => getCurrentUser());
-  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authMode, setAuthMode] = useState<AuthMode>('open');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
-  const [password, setPassword] = useState('');
   const [savedMangas, setSavedMangas] = useState<SavedManga[]>(() => (user ? getSavedMangas(user.id) : []));
   const [progressByMangaId, setProgressByMangaId] = useState<Record<string, MangaProgress>>({});
   const [error, setError] = useState<string | null>(null);
@@ -225,20 +225,19 @@ export default function LibraryScreen() {
     };
   }, [savedMangas, user]);
 
-  async function handleEmailSubmit() {
+  async function handleProfileSubmit() {
     try {
       setIsSubmitting(true);
       const nextUser =
         authMode === 'create'
-          ? await createEmailAccount(name, email, password)
-          : await loginWithEmail(email, password);
+          ? createLocalProfile(name, email)
+          : openLocalProfile(email);
 
       setUser(nextUser);
       setSavedMangas(getSavedMangas(nextUser.id));
       setError(null);
-      setPassword('');
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'No se pudo iniciar sesion');
+      setError(authError instanceof Error ? authError.message : 'No se pudo abrir el perfil local');
     } finally {
       setIsSubmitting(false);
     }
@@ -300,6 +299,13 @@ export default function LibraryScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}>
+      <Head>
+        <title>Mi biblioteca | MyMangaOnline</title>
+        <meta
+          name="description"
+          content="Organiza mangas y progreso de lectura en un perfil guardado localmente en tu navegador."
+        />
+      </Head>
       <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
         <View style={styles.eyebrowRow}>
           <View style={styles.liveDot} />
@@ -307,7 +313,11 @@ export default function LibraryScreen() {
             GUARDA · SIGUE · CONTINÚA
           </ThemedText>
         </View>
-        <ThemedText type="title" style={[styles.title, isMobileLayout && styles.compactTitle]}>
+        <ThemedText
+          accessibilityRole="header"
+          aria-level={1}
+          type="title"
+          style={[styles.title, isMobileLayout && styles.compactTitle]}>
           Mis mangas
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
@@ -319,25 +329,25 @@ export default function LibraryScreen() {
         <ThemedView type="backgroundElement" style={styles.loginPanel}>
           <View style={styles.loginHeader}>
             <ThemedText type="code" style={styles.panelEyebrow}>
-              ACCESO PERSONAL
+              PERFIL LOCAL
             </ThemedText>
             <ThemedText type="subtitle" style={styles.panelTitle}>
-              {authMode === 'create' ? 'Crear cuenta' : 'Entrar'}
+              {authMode === 'create' ? 'Crear perfil' : 'Abrir perfil'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Tu sesion queda guardada en este navegador.
+              No es una cuenta en linea: los datos quedan solo en este navegador y no se usa contrasena.
             </ThemedText>
           </View>
 
           <View style={styles.authModeRow}>
             <Pressable
-              onPress={() => setAuthMode('login')}
+              onPress={() => setAuthMode('open')}
               style={[
                 styles.authModeButton,
-                authMode === 'login' && styles.authModeButtonActive,
+                authMode === 'open' && styles.authModeButtonActive,
               ]}>
-              <ThemedText type="smallBold" style={authMode === 'login' && styles.primaryButtonText}>
-                Entrar
+              <ThemedText type="smallBold" style={authMode === 'open' && styles.primaryButtonText}>
+                Abrir perfil
               </ThemedText>
             </Pressable>
             <Pressable
@@ -347,7 +357,7 @@ export default function LibraryScreen() {
                 authMode === 'create' && styles.authModeButtonActive,
               ]}>
               <ThemedText type="smallBold" style={authMode === 'create' && styles.primaryButtonText}>
-                Crear cuenta
+                Crear perfil
               </ThemedText>
             </Pressable>
           </View>
@@ -375,19 +385,6 @@ export default function LibraryScreen() {
             textContentType="emailAddress"
             style={[styles.input, { color: theme.text }]}
           />
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Contrasena"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            textContentType={authMode === 'create' ? 'newPassword' : 'password'}
-            onSubmitEditing={() => void handleEmailSubmit()}
-            style={[styles.input, { color: theme.text }]}
-          />
-
           {error && (
             <View style={styles.formError}>
               <ThemedText type="small" themeColor="textSecondary">
@@ -398,7 +395,7 @@ export default function LibraryScreen() {
 
           <Pressable
             disabled={isSubmitting}
-            onPress={() => void handleEmailSubmit()}
+            onPress={() => void handleProfileSubmit()}
             style={({ pressed }) => [
               styles.primaryButton,
               isSubmitting && styles.disabled,
@@ -408,7 +405,7 @@ export default function LibraryScreen() {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                {authMode === 'create' ? 'Crear cuenta' : 'Entrar con correo'}
+                {authMode === 'create' ? 'Crear perfil local' : 'Abrir perfil local'}
               </ThemedText>
             )}
           </Pressable>
@@ -426,7 +423,7 @@ export default function LibraryScreen() {
                 </ThemedText>
                 <ThemedText type="smallBold">Usuario: {user.name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {user.email} - Correo
+                  {user.email} - Solo este dispositivo
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {savedMangas.length} mangas guardados
@@ -440,7 +437,7 @@ export default function LibraryScreen() {
             </View>
             <Pressable onPress={handleLogout} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
               <ThemedText type="smallBold" themeColor="textSecondary">
-                Cerrar sesion
+                Cambiar perfil
               </ThemedText>
             </Pressable>
           </ThemedView>

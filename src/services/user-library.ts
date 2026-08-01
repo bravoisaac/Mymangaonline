@@ -6,7 +6,7 @@ const CURRENT_USER_KEY = 'mymangaonline.currentUser';
 const LIBRARY_KEY_PREFIX = 'mymangaonline.library.';
 const VIEWED_CHAPTERS_KEY_PREFIX = 'mymangaonline.viewedChapters.';
 
-export type AuthProvider = 'email';
+export type AuthProvider = 'local';
 
 export type LocalUser = {
   id: string;
@@ -18,8 +18,12 @@ export type LocalUser = {
 };
 
 type LocalAccount = LocalUser & {
-  passwordHash?: string;
   updatedAt: string;
+};
+
+type LegacyLocalAccount = Omit<LocalAccount, 'provider'> & {
+  provider: AuthProvider | 'email';
+  passwordHash?: unknown;
 };
 
 export type SavedManga = MangaSearchResult & {
@@ -92,7 +96,19 @@ function writeJson(key: string, value: unknown) {
 }
 
 function getAccounts() {
-  return readJson<LocalAccount[]>(ACCOUNTS_KEY, []);
+  const storedAccounts = readJson<LegacyLocalAccount[]>(ACCOUNTS_KEY, []);
+  const accounts = storedAccounts
+    .filter((account) => account?.id && account.email && account.name)
+    .map(({ passwordHash: _discardedPasswordHash, ...account }) => ({
+      ...account,
+      provider: 'local' as const,
+    }));
+
+  if (storedAccounts.some((account) => 'passwordHash' in account || account.provider !== 'local')) {
+    saveAccounts(accounts);
+  }
+
+  return accounts;
 }
 
 function saveAccounts(accounts: LocalAccount[]) {
@@ -107,12 +123,6 @@ function validateEmail(email: string) {
   }
 
   return normalizedEmail;
-}
-
-function validatePassword(password: string) {
-  if (password.length < 6) {
-    throw new Error('La contrasena debe tener al menos 6 caracteres');
-  }
 }
 
 function toPublicUser(account: LocalAccount, provider = account.provider): LocalUser {
@@ -130,38 +140,24 @@ function setCurrentUser(user: LocalUser) {
   writeJson(CURRENT_USER_KEY, user);
 }
 
-async function hashPassword(password: string, email: string) {
-  const value = `${normalizeEmail(email)}:${password}`;
-
-  if (globalThis.crypto?.subtle && typeof TextEncoder !== 'undefined') {
-    const encodedValue = new TextEncoder().encode(value);
-    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', encodedValue);
-
-    return Array.from(new Uint8Array(hashBuffer))
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  let fallbackHash = 0;
-
-  for (let index = 0; index < value.length; index += 1) {
-    fallbackHash = (fallbackHash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-
-  return `fallback-${fallbackHash.toString(16)}`;
-}
-
 export function getCurrentUser() {
+  getAccounts();
   const user = readJson<LocalUser | null>(CURRENT_USER_KEY, null);
 
-  if (!user?.id || !user.email || user.provider !== 'email') {
+  if (!user?.id || !user.email || !['email', 'local'].includes(user.provider)) {
     return null;
   }
 
-  return user;
+  const localUser = { ...user, provider: 'local' as const };
+
+  if (user.provider !== 'local') {
+    setCurrentUser(localUser);
+  }
+
+  return localUser;
 }
 
-export async function createEmailAccount(name: string, email: string, password: string) {
+export function createLocalProfile(name: string, email: string) {
   const trimmedName = name.trim();
   const normalizedEmail = validateEmail(email);
 
@@ -169,12 +165,10 @@ export async function createEmailAccount(name: string, email: string, password: 
     throw new Error('Ingresa tu nombre');
   }
 
-  validatePassword(password);
-
   const accounts = getAccounts();
 
-  if (accounts.some((account) => account.email === normalizedEmail && account.passwordHash)) {
-    throw new Error('Ya existe una cuenta con ese correo');
+  if (accounts.some((account) => account.email === normalizedEmail)) {
+    throw new Error('Ya existe un perfil local con ese correo');
   }
 
   const now = new Date().toISOString();
@@ -182,8 +176,7 @@ export async function createEmailAccount(name: string, email: string, password: 
     id: normalizeUserId(normalizedEmail),
     name: trimmedName,
     email: normalizedEmail,
-    provider: 'email',
-    passwordHash: await hashPassword(password, normalizedEmail),
+    provider: 'local',
     createdAt: now,
     updatedAt: now,
   };
@@ -199,23 +192,15 @@ export async function createEmailAccount(name: string, email: string, password: 
   return user;
 }
 
-export async function loginWithEmail(email: string, password: string) {
+export function openLocalProfile(email: string) {
   const normalizedEmail = validateEmail(email);
-  validatePassword(password);
-
-  const account = getAccounts().find((item) => item.email === normalizedEmail && item.passwordHash);
+  const account = getAccounts().find((item) => item.email === normalizedEmail);
 
   if (!account) {
-    throw new Error('No existe una cuenta con ese correo');
+    throw new Error('No existe un perfil local con ese correo en este navegador');
   }
 
-  const passwordHash = await hashPassword(password, normalizedEmail);
-
-  if (account.passwordHash !== passwordHash) {
-    throw new Error('Correo o contrasena incorrectos');
-  }
-
-  const user = toPublicUser(account, 'email');
+  const user = toPublicUser(account, 'local');
 
   setCurrentUser(user);
 

@@ -1,4 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import Head from 'expo-router/head';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -8,6 +9,13 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <Head>
+        <title>MyMangaOnline</title>
+        <meta
+          name="description"
+          content="Descubre, organiza y lee manga en español con fuentes como MangaDex y Comick."
+        />
+      </Head>
       <AnimatedSplashOverlay />
       <AppTabs />
     </ThemeProvider>
