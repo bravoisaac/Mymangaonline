@@ -9,6 +9,7 @@ import type {
   MangaSearchResult,
   MangaTag,
 } from './mangadex';
+import { filterAllowedMangaTitles, isMangaTitleBlocked } from './manga-policy';
 
 export type MangaSourceId = 'mangadex' | 'comick' | string;
 
@@ -201,7 +202,6 @@ type MangaLibraryRequestOptions = MangaFilters & {
 const HOME_MANGA_LIMIT = 15;
 const HOME_MANGA_LOOKAHEAD_LIMIT = 30;
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
-const DEFAULT_LIBRARY_QUERY = 'one piece';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
 const DEFAULT_API_TIMEOUT_MS = 12000;
 const CHAPTER_REQUEST_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -435,7 +435,7 @@ export async function searchMangaFromApi(
     }),
   );
 
-  return data.items.map(mapApiManga);
+  return filterAllowedMangaTitles(data.items.map(mapApiManga));
 }
 
 export async function searchAllMangaFromApi(
@@ -451,7 +451,9 @@ export async function searchAllMangaFromApi(
     options,
   );
 
-  return data.results.flatMap((result) => result.items.map(mapApiManga));
+  return filterAllowedMangaTitles(
+    data.results.flatMap((result) => result.items.map(mapApiManga)),
+  );
 }
 
 export async function getMangaTagsFromApi(language: MangaLanguage) {
@@ -481,7 +483,7 @@ async function getMangaLibraryFromApi(
   );
 
   return {
-    mangas: data.mangas.map(mapApiManga),
+    mangas: filterAllowedMangaTitles(data.mangas.map(mapApiManga)),
     total: data.total,
     limit: data.limit,
     offset: data.offset,
@@ -497,10 +499,10 @@ export async function getMergedMangaLibraryFromApi(
   const normalizedPage = Math.max(0, page);
   const normalizedLimit = Math.max(1, limit);
   const hasMangaDexFilters = (options.tagIds?.length ?? 0) > 0;
-  const libraryQuery = options.query?.trim() || DEFAULT_LIBRARY_QUERY;
+  const libraryQuery = options.query?.trim();
   const [mangadexPage, comickMangas] = await Promise.all([
     getMangaLibraryFromApi(language, normalizedPage, normalizedLimit, options),
-    hasMangaDexFilters || normalizedPage > 0
+    hasMangaDexFilters || normalizedPage > 0 || !libraryQuery
       ? Promise.resolve<MangaSearchResult[]>([])
       : withTimeout(
           searchMangaFromApi(libraryQuery, language, 'comick'),
@@ -539,7 +541,7 @@ export async function getAllMangaLibraryFromApi(
   );
 
   return {
-    mangas: data.mangas.map(mapApiManga),
+    mangas: filterAllowedMangaTitles(data.mangas.map(mapApiManga)),
     total: data.total,
     limit: data.limit,
     offset: data.offset,
@@ -557,7 +559,13 @@ export async function getMangaDetailsFromApi(
     }),
   );
 
-  return mapApiManga(data);
+  const manga = mapApiManga(data);
+
+  if (isMangaTitleBlocked(manga.title)) {
+    throw new Error('Este manga no esta disponible.');
+  }
+
+  return manga;
 }
 
 export async function getMangaChaptersFromApi(
@@ -649,7 +657,9 @@ export async function searchScraperMangaFromApi(
     );
 
     return {
-      items: data.items.map((item) => ({ ...item, providerId: item.providerId ?? data.providerId })),
+      items: filterAllowedMangaTitles(
+        data.items.map((item) => ({ ...item, providerId: item.providerId ?? data.providerId })),
+      ),
       errors: [],
     };
   }
@@ -661,8 +671,10 @@ export async function searchScraperMangaFromApi(
   );
 
   return {
-    items: data.results.flatMap((result) =>
-      result.items.map((item) => ({ ...item, providerId: item.providerId ?? result.providerId })),
+    items: filterAllowedMangaTitles(
+      data.results.flatMap((result) =>
+        result.items.map((item) => ({ ...item, providerId: item.providerId ?? result.providerId })),
+      ),
     ),
     errors: data.errors,
   };

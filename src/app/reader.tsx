@@ -33,7 +33,6 @@ import {
   type MangaTag,
 } from '@/services/mangadex';
 
-const INITIAL_QUERY = 'one piece';
 const LIBRARY_PAGE_SIZE = 15;
 const LIBRARY_CACHE_TTL_MS = 2 * 60 * 1000;
 const LIBRARY_CACHE_MAX_PAGES = 24;
@@ -175,7 +174,7 @@ export default function ReaderScreen() {
   const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const params = useLocalSearchParams();
   const router = useRouter();
-  const initialQuery = getParam(params.query) ?? INITIAL_QUERY;
+  const initialQuery = getParam(params.query) ?? '';
   const hasRunInitialSearch = useRef(false);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchRequestIdRef = useRef(0);

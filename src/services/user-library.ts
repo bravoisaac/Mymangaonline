@@ -1,5 +1,6 @@
 import type { MangaLanguage, MangaSearchResult } from './mangadex';
 import type { ScraperMangaResult } from './mymangaonline-api';
+import { filterAllowedMangaTitles, isMangaTitleBlocked } from './manga-policy';
 
 const ACCOUNTS_KEY = 'mymangaonline.accounts';
 const CURRENT_USER_KEY = 'mymangaonline.currentUser';
@@ -218,7 +219,7 @@ export function logoutUser() {
 }
 
 export function getSavedMangas(userId: string) {
-  return readJson<SavedManga[]>(getLibraryKey(userId), []);
+  return filterAllowedMangaTitles(readJson<SavedManga[]>(getLibraryKey(userId), []));
 }
 
 export function isMangaSaved(userId: string, mangaId: string) {
@@ -234,6 +235,10 @@ export function isScraperMangaSaved(userId: string, providerId: string, mangaId:
 }
 
 export function saveManga(userId: string, manga: MangaSearchResult, language: MangaLanguage) {
+  if (isMangaTitleBlocked(manga.title)) {
+    throw new Error('Este manga no esta disponible.');
+  }
+
   const savedMangas = getSavedMangas(userId);
   const nextManga: SavedManga = {
     ...manga,
@@ -257,6 +262,10 @@ export function saveScraperManga(
   providerName: string,
   providerLanguage?: string,
 ) {
+  if (isMangaTitleBlocked(manga.title)) {
+    throw new Error('Este manga no esta disponible.');
+  }
+
   const savedMangas = getSavedMangas(userId);
   const mangaId = getScraperSavedMangaId(manga.providerId, manga.id);
   const nextManga: SavedManga = {
