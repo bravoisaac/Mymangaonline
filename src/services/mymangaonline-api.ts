@@ -259,7 +259,13 @@ function getApiImageUrl(source: string, imageUrl: string | null) {
     return undefined;
   }
 
-  if (source === 'comick') {
+  if (source === 'comick' || source === 'mangadex') {
+    const proxyEndpoint = `${MYMANGA_API_BASE_URL}/proxy/image`;
+
+    if (imageUrl.startsWith(`${proxyEndpoint}?`)) {
+      return imageUrl;
+    }
+
     return buildApiUrl('/proxy/image', { url: imageUrl });
   }
 

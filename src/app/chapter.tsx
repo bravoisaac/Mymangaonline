@@ -225,11 +225,6 @@ export default function ChapterScreen() {
         language,
         source,
         returnTo,
-        title: manga?.title ?? fallbackManga?.title ?? '',
-        description: manga?.description ?? fallbackManga?.description ?? '',
-        coverUrl: manga?.coverUrl ?? fallbackManga?.coverUrl ?? '',
-        status: manga?.status ?? fallbackManga?.status ?? '',
-        year: manga?.year ? String(manga.year) : fallbackManga?.year ? String(fallbackManga.year) : '',
       },
     });
   }
@@ -248,11 +243,6 @@ export default function ChapterScreen() {
         source,
         chapterOffset: String(offset),
         chapterOrder,
-        title: manga?.title ?? fallbackManga?.title ?? '',
-        description: manga?.description ?? fallbackManga?.description ?? '',
-        coverUrl: manga?.coverUrl ?? fallbackManga?.coverUrl ?? '',
-        status: manga?.status ?? fallbackManga?.status ?? '',
-        year: manga?.year ? String(manga.year) : fallbackManga?.year ? String(fallbackManga.year) : '',
       },
     });
   }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 const webBaseUrl = (process.env.SMOKE_WEB_URL || 'http://localhost:8081').replace(/\/$/, '');
 const apiBaseUrl = (process.env.SMOKE_API_URL || 'http://localhost:3000/api').replace(/\/$/, '');
+const requireProductionHeaders = process.env.SMOKE_REQUIRE_PRODUCTION_HEADERS === 'true';
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {
   const controller = new AbortController();
@@ -22,6 +23,14 @@ async function main() {
   assert.match(readerHtml, /<html[^>]+lang=["']es["']/i, 'El documento web no declara lang="es"');
   assert.match(readerHtml, /<title[^>]*>Explorar manga \| MyMangaOnline<\/title>/i, 'Falta el titulo SEO de /reader');
   assert.match(readerHtml, /name=["']description["']/i, 'Falta la descripcion SEO de /reader');
+
+  if (requireProductionHeaders) {
+    const contentSecurityPolicy = readerResponse.headers.get('content-security-policy') || '';
+
+    assert.match(contentSecurityPolicy, /default-src 'self'/, 'El frontend de produccion no entrega CSP');
+    assert.match(contentSecurityPolicy, /object-src 'none'/, 'La CSP no bloquea objetos embebidos');
+    assert.equal(readerResponse.headers.get('x-content-type-options'), 'nosniff');
+  }
 
   const healthResponse = await fetchWithTimeout(`${apiBaseUrl}/health`, {
     headers: { Origin: new URL(webBaseUrl).origin },
@@ -49,6 +58,23 @@ async function main() {
   assert.equal(searchResponse.status, 200, 'La busqueda agregada no responde 200');
   assert.ok(searchItems.length > 0, 'La busqueda agregada no devolvio resultados');
   assert.ok(searchDurationMs < 12_000, `La busqueda tardo ${searchDurationMs}ms`);
+  assert.ok(Number(searchResponse.headers.get('ratelimit-limit')) > 0, 'La API no anuncia su limite de solicitudes');
+
+  const imageCandidate = searchItems.find(
+    (item) => ['mangadex', 'comick'].includes(item.source) && /^https:\/\//.test(item.cover || ''),
+  );
+
+  assert.ok(imageCandidate, 'La busqueda no devolvio una portada HTTPS para probar el proxy');
+
+  const imageResponse = await fetchWithTimeout(
+    `${apiBaseUrl}/proxy/image?url=${encodeURIComponent(imageCandidate.cover)}`,
+    { headers: { Origin: new URL(webBaseUrl).origin, Accept: 'image/*' } },
+  );
+  const imageBytes = await imageResponse.arrayBuffer();
+
+  assert.equal(imageResponse.status, 200, 'El proxy de portadas no responde 200');
+  assert.match(imageResponse.headers.get('content-type') || '', /^image\//, 'El proxy devolvio un recurso que no es imagen');
+  assert.ok(imageBytes.byteLength > 1024, 'El proxy devolvio una portada vacia o demasiado pequena');
 
   console.log(JSON.stringify({
     ok: true,
@@ -56,6 +82,8 @@ async function main() {
     searchDurationMs,
     searchItems: searchItems.length,
     sourceErrors: searchPayload.errors?.length || 0,
+    imageSource: imageCandidate.source,
+    imageBytes: imageBytes.byteLength,
   }));
 }
 

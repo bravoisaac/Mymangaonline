@@ -216,11 +216,6 @@ export default function MangaScreen() {
         returnTo,
         chapterOffset: String(Math.floor(chapterIndex / CHAPTER_BATCH_SIZE) * CHAPTER_BATCH_SIZE),
         chapterOrder,
-        title: manga?.title ?? '',
-        description: manga?.description ?? '',
-        coverUrl: manga?.coverUrl ?? '',
-        status: manga?.status ?? '',
-        year: manga?.year ? String(manga.year) : '',
       },
     });
   }

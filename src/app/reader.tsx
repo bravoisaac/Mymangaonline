@@ -596,11 +596,6 @@ export default function ReaderScreen() {
         language,
         source: manga.source ?? 'mangadex',
         returnTo: '/reader',
-        title: manga.title,
-        description: manga.description,
-        coverUrl: manga.coverUrl ?? '',
-        status: manga.status ?? '',
-        year: manga.year ? String(manga.year) : '',
       },
     });
   }
