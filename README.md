@@ -130,6 +130,12 @@ npm run ios        # Abre la versión iOS
 npm run lint       # Ejecuta ESLint
 ```
 
+## Produccion web
+
+El despliegue recomendado usa `compose.yaml` para construir dos imagenes: el export estatico servido por Nginx y la API Express privada. Nginx publica un unico puerto y reenvia `/api` al backend, por lo que no se expone directamente el puerto 3000.
+
+Consulta [PRODUCTION.md](./PRODUCTION.md) para instalar los requisitos, configurar el dominio, construir las imagenes, ejecutar healthchecks, publicar y hacer rollback.
+
 ## Rutas principales
 
 | Ruta | Descripción |
