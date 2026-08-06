@@ -204,15 +204,15 @@ const HOME_MANGA_LOOKAHEAD_LIMIT = 30;
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
 const SECONDARY_LIBRARY_TIMEOUT_MS = 1600;
 const DEFAULT_API_TIMEOUT_MS = 12000;
-const CHAPTER_REQUEST_CACHE_TTL_MS = 2 * 60 * 1000;
-const CHAPTER_REQUEST_CACHE_MAX_ENTRIES = 100;
+const API_REQUEST_CACHE_TTL_MS = 2 * 60 * 1000;
+const API_REQUEST_CACHE_MAX_ENTRIES = 100;
 
 type CachedApiRequest = {
   expiresAt: number;
   promise: Promise<unknown>;
 };
 
-const chapterRequestCache = new Map<string, CachedApiRequest>();
+const apiRequestCache = new Map<string, CachedApiRequest>();
 
 export type ApiRequestOptions = {
   signal?: AbortSignal;
@@ -326,37 +326,39 @@ async function fetchApiJson<TResponse>(url: string, options: ApiRequestOptions =
 
 function fetchCachedApiJson<TResponse>(url: string) {
   const now = Date.now();
-  const cachedRequest = chapterRequestCache.get(url);
+  const cachedRequest = apiRequestCache.get(url);
 
   if (cachedRequest && cachedRequest.expiresAt > now) {
+    apiRequestCache.delete(url);
+    apiRequestCache.set(url, cachedRequest);
     return cachedRequest.promise as Promise<TResponse>;
   }
 
   if (cachedRequest) {
-    chapterRequestCache.delete(url);
+    apiRequestCache.delete(url);
   }
 
   const promise = fetchApiJson<TResponse>(url).catch((error) => {
-    if (chapterRequestCache.get(url)?.promise === promise) {
-      chapterRequestCache.delete(url);
+    if (apiRequestCache.get(url)?.promise === promise) {
+      apiRequestCache.delete(url);
     }
 
     throw error;
   });
 
-  chapterRequestCache.set(url, {
-    expiresAt: now + CHAPTER_REQUEST_CACHE_TTL_MS,
+  apiRequestCache.set(url, {
+    expiresAt: now + API_REQUEST_CACHE_TTL_MS,
     promise,
   });
 
-  while (chapterRequestCache.size > CHAPTER_REQUEST_CACHE_MAX_ENTRIES) {
-    const oldestKey = chapterRequestCache.keys().next().value;
+  while (apiRequestCache.size > API_REQUEST_CACHE_MAX_ENTRIES) {
+    const oldestKey = apiRequestCache.keys().next().value;
 
     if (typeof oldestKey !== 'string') {
       break;
     }
 
-    chapterRequestCache.delete(oldestKey);
+    apiRequestCache.delete(oldestKey);
   }
 
   return promise;
@@ -463,7 +465,7 @@ export async function searchAllMangaFromApi(
 }
 
 export async function getMangaTagsFromApi(language: MangaLanguage) {
-  const data = await fetchApiJson<MangaTagsResponse>(
+  const data = await fetchCachedApiJson<MangaTagsResponse>(
     buildApiUrl('/manga/tags', {
       lang: language,
     }),
@@ -478,7 +480,7 @@ async function getMangaLibraryFromApi(
   limit: number,
   options: MergedMangaLibraryOptions,
 ): Promise<MangaLibraryPage> {
-  const data = await fetchApiJson<MangaLibraryResponse>(
+  const data = await fetchCachedApiJson<MangaLibraryResponse>(
     buildApiUrl('/manga/library', {
       lang: language,
       page: String(page),
@@ -534,7 +536,7 @@ export async function getAllMangaLibraryFromApi(
 ): Promise<MangaLibraryPage> {
   const normalizedPage = Math.max(0, page);
   const normalizedLimit = Math.max(1, limit);
-  const data = await fetchApiJson<MangaLibraryResponse>(
+  const data = await fetchCachedApiJson<MangaLibraryResponse>(
     buildApiUrl('/manga/library/all', {
       lang: language,
       page: String(normalizedPage),
@@ -559,7 +561,7 @@ export async function getMangaDetailsFromApi(
   mangaId: string,
   language: MangaLanguage,
 ) {
-  const data = await fetchApiJson<NormalizedMangaDetails>(
+  const data = await fetchCachedApiJson<NormalizedMangaDetails>(
     buildApiUrl(`/manga/${encodeURIComponent(source)}/${encodeURIComponent(mangaId)}`, {
       lang: language,
     }),
@@ -633,7 +635,7 @@ export async function getHomeMangaFromApi(language: MangaLanguage): Promise<Home
 }
 
 export async function getScraperProvidersFromApi(activeOnly = true) {
-  const data = await fetchApiJson<ProvidersResponse>(
+  const data = await fetchCachedApiJson<ProvidersResponse>(
     buildApiUrl('/providers', {
       all: activeOnly ? undefined : 'true',
     }),

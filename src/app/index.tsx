@@ -540,13 +540,21 @@ function MangaRail({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.mangaList}
           decelerationRate="fast"
+          getItemLayout={(_data, index) => ({
+            index,
+            length: MANGA_CARD_WIDTH,
+            offset: MANGA_CARD_STEP * index,
+          })}
+          initialNumToRender={8}
           ListEmptyComponent={<EmptyRail />}
+          maxToRenderPerBatch={6}
           onScroll={(event) => {
             scrollOffsetRef.current = event.nativeEvent.contentOffset.x;
           }}
           scrollEventThrottle={16}
           snapToAlignment="start"
           snapToInterval={MANGA_CARD_STEP}
+          windowSize={5}
           renderItem={({ index, item }) => (
             <MangaCard
               index={index}
@@ -606,7 +614,14 @@ function MangaCard({
       style={({ pressed }) => [styles.mangaCard, pressed && styles.pressed]}>
       <View style={styles.coverFrame}>
         {manga.coverUrl ? (
-          <Image source={{ uri: manga.coverUrl }} style={styles.cover} contentFit="cover" />
+          <Image
+            source={{ uri: manga.coverUrl }}
+            style={styles.cover}
+            cachePolicy="memory-disk"
+            contentFit="cover"
+            loading="lazy"
+            recyclingKey={`${manga.source ?? 'mangadex'}:${manga.id}`}
+          />
         ) : (
           <CoverPlaceholder />
         )}
