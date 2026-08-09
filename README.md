@@ -136,6 +136,8 @@ El despliegue recomendado usa `compose.yaml` para construir dos imagenes: el exp
 
 Consulta [PRODUCTION.md](./PRODUCTION.md) para instalar los requisitos, configurar el dominio, construir las imagenes, ejecutar healthchecks, publicar y hacer rollback.
 
+Para una publicacion sin costo con Cloudflare Pages y Render Free, consulta [DEPLOY_FREE.md](./DEPLOY_FREE.md).
+
 ## Rutas principales
 
 | Ruta | Descripción |
