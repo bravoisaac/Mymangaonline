@@ -1,172 +1,164 @@
-# My Manga Online — Frontend
+<div align="center">
 
-Aplicación multiplataforma para descubrir, guardar y leer manga desde una interfaz unificada. El frontend consume `API_Mymangaonline`, combina contenido de MangaDex y ComicK, permite filtrar por idioma y presenta descripciones, géneros y capítulos disponibles.
+# My Manga Online
 
-Construida con Expo, React Native, TypeScript y Expo Router. Funciona en web, Android e iOS desde una misma base de código.
+**Una aplicación multiplataforma para descubrir, guardar y leer manga desde una sola interfaz.**
 
-## Capturas
+[![Expo](https://img.shields.io/badge/Expo-56-000020?logo=expo&logoColor=white)](https://expo.dev/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Platforms](https://img.shields.io/badge/Plataformas-Web%20%7C%20Android%20%7C%20iOS-2563EB)](#plataformas)
+[![License](https://img.shields.io/badge/Licencia-MIT-16A34A)](./LICENSE)
 
-### Inicio — escritorio
+</div>
 
-Portada principal con selector de idioma, contenido destacado y accesos rápidos.
+![Inicio de My Manga Online en escritorio](./output/playwright/readme-home-desktop.png)
 
-![Inicio actualizado de My Manga Online](./output/playwright/inicio-actual.png)
+My Manga Online combina catálogos de MangaDex y ComicK, ofrece búsqueda y filtros por idioma o género, conserva una biblioteca personal en el dispositivo y permite continuar la lectura desde un lector adaptable.
 
-### Explorar
+## Características
 
-Búsqueda combinada en MangaDex y Comick, filtros, idiomas y catálogo paginado.
+- Catálogo agregado con contenido de MangaDex y ComicK.
+- Búsqueda por título y filtros por categorías, géneros y temas.
+- Lectura en español, inglés, portugués de Brasil y francés.
+- Compatibilidad con capítulos `ES` y `ES-419`.
+- Fichas con portada, descripción localizada, estado, año, autores y géneros.
+- Capítulos paginados, ordenables y con seguimiento de lectura.
+- Biblioteca personal persistente en el dispositivo.
+- Interfaz responsive con navegación específica para escritorio y móvil.
+- Tema claro u oscuro según la configuración del sistema.
+- Estados de carga, error y contenido vacío en los flujos asíncronos.
 
-![Explorador actualizado de My Manga Online](./output/playwright/explorar-actual.png)
+## Vista previa
 
-### Detalle y capítulos
+### Catálogo
 
-Ficha de Dandadan desde Comick con sus metadatos, géneros y los 196 capítulos disponibles, incluidos los extras.
+![Catálogo de My Manga Online con filtros e idiomas](./output/playwright/readme-catalog-desktop.png)
 
-![Detalle actualizado de Dandadan con todos sus capítulos](./output/playwright/detalle-comick-actual.png)
-
-### Diseño adaptable
-
-La navegación, el selector de idioma y las tarjetas se reorganizan para pantallas móviles.
+### Experiencia móvil
 
 <p align="center">
-  <img src="./output/playwright/inicio-mobile-actual.png" width="390" alt="Inicio actualizado de My Manga Online en móvil">
+  <img src="./output/playwright/readme-home-mobile.png" width="390" alt="Inicio de My Manga Online en un dispositivo móvil">
 </p>
 
-## Funcionalidades
+### Detalle del manga
 
-- Catálogo combinado de MangaDex y ComicK.
-- Idiomas de lectura: español, inglés, portugués de Brasil y francés.
-- Compatibilidad con capítulos `ES` y `ES-419`.
-- Búsqueda de manga por título.
-- Filtros por categorías, géneros y temas.
-- Fichas con portada, descripción localizada, metadatos y géneros.
-- Traducción de respaldo para las sinopsis de ComicK.
-- Listado de capítulos con orden ascendente o descendente.
-- Paginación completa de capítulos de MangaDex y Comick, sin cortes por los límites de cada proveedor.
-- Registro de capítulos vistos.
-- Biblioteca personal para guardar mangas.
-- Interfaz adaptable para web y dispositivos móviles.
-- Tema claro u oscuro según la configuración del sistema.
+![Detalle de manga y listado de capítulos](./output/playwright/detalle-comick-actual.png)
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    UI["Pantallas de Expo Router"] --> S["Servicios tipados"]
+    UI --> B["Biblioteca local"]
+    S --> API["API_Mymangaonline"]
+    API --> MD["MangaDex"]
+    API --> CK["ComicK"]
+```
+
+| Capa | Ubicación | Responsabilidad |
+| --- | --- | --- |
+| Rutas y pantallas | `src/app/` | Navegación, composición y estados de pantalla |
+| Componentes | `src/components/` | Navegación y elementos visuales reutilizables |
+| Servicios | `src/services/` | Cliente de API, normalización y biblioteca local |
+| Hooks | `src/hooks/` | Tema, plataforma y diseño responsive |
+| Diseño | `src/constants/theme.ts` | Colores, espaciado y tokens visuales |
 
 ## Tecnologías
 
 | Tecnología | Uso |
 | --- | --- |
-| Expo 56 | Desarrollo y ejecución multiplataforma |
+| Expo 56 | Desarrollo, compilación y ejecución multiplataforma |
 | React 19 | Construcción de la interfaz |
-| React Native | Componentes nativos y web |
-| Expo Router | Navegación basada en archivos |
+| React Native 0.85 | Componentes nativos y compatibilidad web |
+| Expo Router | Navegación tipada basada en archivos |
 | TypeScript | Tipado estático |
 | Expo Image | Carga y optimización de portadas |
-| React Native Reanimated | Animaciones de la aplicación |
+| Reanimated | Animaciones e interacciones |
 
 ## Requisitos
 
 - Node.js 20 o superior.
 - npm.
-- El proyecto `API_Mymangaonline` instalado y en ejecución.
-- Android Studio, Xcode o Expo Go si se desea ejecutar fuera del navegador.
+- Una instancia de [API_Mymangaonline](https://github.com/bravoisaac/API_Mymangaonline) en ejecución.
+- Expo Go, Android Studio o Xcode solamente si se utilizará una plataforma móvil.
 
 ## Instalación
 
-El repositorio contiene el frontend y la API en directorios separados:
-
-```text
-Mymangaonline/
-├── API_Mymangaonline/   # Backend
-└── Mymangaonline/       # Frontend Expo
-```
-
-### 1. Iniciar la API
-
-Desde la raíz del repositorio:
-
 ```bash
-cd API_Mymangaonline
-npm install
-npm run dev
-```
-
-La API se ejecuta por defecto en `http://localhost:3000/api`.
-
-### 2. Iniciar el frontend
-
-En otra terminal:
-
-```bash
+git clone https://github.com/bravoisaac/Mymangaonline.git
 cd Mymangaonline
 npm install
-npm run web
 ```
 
-Expo mostrará la URL local. Normalmente se puede abrir la aplicación en:
-
-```text
-http://localhost:8081/reader
-```
-
-## Configuración de la API
-
-El frontend selecciona automáticamente una URL adecuada para cada plataforma:
-
-- Web e iOS Simulator: `http://localhost:3000/api`
-- Emulador Android: `http://10.0.2.2:3000/api`
-
-Para utilizar otra dirección, crea un archivo `.env.local` dentro del frontend:
+Crea `.env.local` en la raíz del proyecto y define la URL de la API:
 
 ```env
 EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
 ```
 
-En un dispositivo físico debes reemplazar `localhost` por la IP local del equipo que ejecuta la API.
+> Las variables `EXPO_PUBLIC_*` quedan incluidas en el cliente; nunca almacenes secretos en ellas.
 
-## Comandos disponibles
+Inicia la aplicación web:
 
 ```bash
-npm run start      # Inicia Expo
-npm run web        # Abre la versión web
-npm run android    # Abre la versión Android
-npm run ios        # Abre la versión iOS
-npm run lint       # Ejecuta ESLint
+npm run web
 ```
 
-## Produccion web
+Abre [http://localhost:8081](http://localhost:8081). En Android Emulator, la URL predeterminada de la API es `http://10.0.2.2:3000/api`; en un dispositivo físico debes usar la IP local del equipo que ejecuta la API.
 
-El despliegue recomendado usa `compose.yaml` para construir dos imagenes: el export estatico servido por Nginx y la API Express privada. Nginx publica un unico puerto y reenvia `/api` al backend, por lo que no se expone directamente el puerto 3000.
+## Plataformas
 
-Consulta [PRODUCTION.md](./PRODUCTION.md) para instalar los requisitos, configurar el dominio, construir las imagenes, ejecutar healthchecks, publicar y hacer rollback.
+```bash
+npm run web      # Navegador
+npm run android  # Android
+npm run ios      # iOS
+```
 
-Para una publicacion sin costo con Cloudflare Pages y Render Free, consulta [DEPLOY_FREE.md](./DEPLOY_FREE.md).
+## Scripts
+
+| Comando | Descripción |
+| --- | --- |
+| `npm start` | Inicia el servidor de desarrollo de Expo |
+| `npm run web` | Inicia la versión web |
+| `npm run android` | Abre el proyecto en Android |
+| `npm run ios` | Abre el proyecto en iOS |
+| `npm run lint` | Ejecuta ESLint |
+| `npm run typecheck` | Valida los tipos sin generar archivos |
+| `npm run export:web` | Genera el export estático para web |
+| `npm run smoke:deploy` | Comprueba un despliegue publicado |
 
 ## Rutas principales
 
 | Ruta | Descripción |
 | --- | --- |
-| `/` | Inicio y recomendaciones |
+| `/` | Inicio, recomendaciones y selector de idioma |
 | `/reader` | Catálogo, búsqueda y filtros |
-| `/manga` | Detalle del manga y capítulos |
-| `/chapter` | Lector del capítulo |
-| `/library` | Cuenta y mangas guardados |
-| `/scrapers` | Fuentes adicionales de contenido |
-| `/extensions` | Información de extensiones disponibles |
+| `/manga` | Detalle, metadatos y capítulos |
+| `/chapter` | Lector de capítulos |
+| `/library` | Biblioteca personal |
+| `/scrapers` | Búsqueda en proveedores adicionales |
+| `/extensions` | Fuentes y extensiones disponibles |
 
-## Estructura del frontend
+## Calidad y validación
 
-```text
-src/
-├── app/          # Pantallas y rutas de Expo Router
-├── components/   # Componentes visuales reutilizables
-├── constants/    # Tema, tamaños y espaciado
-├── hooks/        # Hooks de tema y plataforma
-└── services/     # Cliente de API, MangaDex y biblioteca local
-```
-
-## Validación
-
-Antes de publicar cambios ejecuta:
+Antes de publicar cambios:
 
 ```bash
 npm run lint
+npm run typecheck
+npm run export:web
 ```
 
-Las capturas del README se encuentran en `output/playwright/` y fueron generadas desde la aplicación web en ejecución.
+## Despliegue
+
+- [Producción con Docker Compose y Nginx](./PRODUCTION.md)
+- [Cloudflare Pages + Render Free](./DEPLOY_FREE.md)
+
+La configuración de producción publica un único origen: Nginx sirve el export estático y reenvía `/api` al backend, evitando exponer directamente el puerto interno de Express.
+
+## Licencia y uso
+
+Distribuido bajo la [licencia MIT](./LICENSE). Este proyecto es personal, educativo y de portafolio; no almacena ni redistribuye capítulos por cuenta propia.
+
+Las capturas de esta documentación fueron generadas desde la aplicación real en `http://localhost:8081`.
