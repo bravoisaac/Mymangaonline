@@ -78,7 +78,7 @@ flowchart LR
 
 ## Requisitos
 
-- Node.js 20 o superior.
+- Node.js 22 (Expo SDK 56 requiere Node 20.19 o superior; 22 es la versión recomendada para este workspace).
 - npm.
 - Una instancia de [API_Mymangaonline](https://github.com/bravoisaac/API_Mymangaonline) en ejecución.
 - Expo Go, Android Studio o Xcode solamente si se utilizará una plataforma móvil.
@@ -88,7 +88,7 @@ flowchart LR
 ```bash
 git clone https://github.com/bravoisaac/Mymangaonline.git
 cd Mymangaonline
-npm install
+npm ci
 ```
 
 Crea `.env.local` en la raíz del proyecto y define la URL de la API:
@@ -153,9 +153,9 @@ npm run export:web
 ## Despliegue
 
 - [Producción con Docker Compose y Nginx](./PRODUCTION.md)
-- [Cloudflare Pages + Render Free](./DEPLOY_FREE.md)
+- [Cloudflare Pages + Render Free, mediante carga manual y sin Git](./DEPLOY_FREE.md)
 
-La configuración de producción publica un único origen: Nginx sirve el export estático y reenvía `/api` al backend, evitando exponer directamente el puerto interno de Express.
+Para uso personal gratuito, el export `dist/` se sube directamente a Cloudflare Pages y la API se entrega a Render como una imagen Docker existente. No es necesario conectar un repositorio Git. La configuración Docker Compose alternativa publica un único origen: Nginx sirve el export estático y reenvía `/api` al backend.
 
 ## Licencia y uso
 

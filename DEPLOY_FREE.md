@@ -1,188 +1,256 @@
-# Despliegue web sin costo de MyMangaOnline
+# Despliegue gratuito y manual (sin Git)
 
-Última verificación: 8 de agosto de 2026.
+Última verificación: 16 de agosto de 2026.
 
-Esta guía deja la aplicación web publicada sin comprar dominio ni contratar servidores, usando los subdominios HTTPS incluidos por cada proveedor:
+Esta guía publica My Manga Online para uso personal sin conectar GitHub, GitLab ni Bitbucket a los proveedores. Los despliegues se realizan desde el equipo local:
 
 ```text
-Usuario
-  -> Cloudflare Pages (Expo Web estático)
-  -> Render Free (API Express)
-       -> MangaDex / ComicK
+Equipo local
+  ├─ dist/ de Expo ──────────────> Cloudflare Pages Direct Upload
+  └─ imagen linux/amd64 de la API -> Docker Hub -> Render Free
+
+Usuario -> https://<sitio>.pages.dev -> https://<api>.onrender.com/api
 ```
 
-## Destino recomendado
+## Servicios elegidos
 
-| Componente | Proveedor | Motivo |
+| Componente | Servicio gratuito | Forma de publicación |
 | --- | --- | --- |
-| Frontend Expo Web | Cloudflare Pages Free | CDN, HTTPS, despliegue automático desde GitHub y soporte directo para archivos estáticos |
-| API Express | Render Web Service Free | Ejecuta el Dockerfile existente, entrega HTTPS y permite healthchecks y despliegues desde GitHub |
+| Frontend Expo Web | Cloudflare Pages | Carga directa de `dist/` con Wrangler o arrastrando la carpeta |
+| Imagen de la API | Docker Hub Personal | Un repositorio privado gratuito o uno público |
+| API Express | Render Web Service Free | Imagen Docker existente, sin repositorio Git conectado |
 
-No hace falta comprar un dominio: se pueden conservar `https://<proyecto>.pages.dev` y `https://<servicio>.onrender.com`.
+No hace falta comprar un dominio. Se pueden conservar los subdominios HTTPS `pages.dev` y `onrender.com`.
 
-La opción gratuita tiene límites. Cloudflare Pages Free permite 500 builds mensuales, 20.000 archivos por sitio y 25 MiB por archivo. Render entrega 750 horas de instancia gratuitas por workspace y duerme el servicio después de 15 minutos sin tráfico; la primera solicitud posterior puede tardar cerca de un minuto. El disco de Render es efímero y Render puede suspender servicios que generen tráfico saliente inusualmente alto. Esta API no necesita persistencia, pero el proxy de imágenes debe mantenerse con los límites actuales.
+> Sin Git no significa sin copias de seguridad. Conserva una copia privada del código y no borres las imágenes Docker etiquetadas que todavía puedas necesitar para volver atrás.
 
-## Archivos ya preparados
+## Coste y limitaciones
 
-- `app.json` usa `web.output: "static"`.
-- `package.json` incluye `export:web` y `smoke:deploy`.
-- `public/_headers` agrega CSP y otras cabeceras de seguridad en Cloudflare Pages.
-- `.env.production.example` documenta la URL pública de la API que se inserta en el build.
-- El repositorio de la API incluye `Dockerfile`, healthcheck `/api/health`, límites de solicitudes y `render.yaml` con el plan gratuito.
+- Cloudflare Pages Direct Upload admite hasta 20.000 archivos con Wrangler (1.000 al arrastrar y soltar) y 25 MiB por archivo.
+- Render Free concede 750 horas de instancia por workspace y mes. El servicio se suspende tras 15 minutos sin tráfico y puede tardar cerca de un minuto en despertar.
+- Si la cuenta de Render tiene un método de pago, revisa **Billing** y los límites de gasto: el consumo adicional de ancho de banda puede facturarse. Sin un método de pago, Render suspende los servicios gratuitos al agotar la cuota en lugar de cobrar el exceso.
+- El sistema de archivos de Render es efímero. Este proyecto no guarda archivos ni usa una base de datos, así que esa limitación es compatible con su arquitectura actual.
+- Render puede suspender servicios gratuitos con tráfico saliente inusualmente alto. Las portadas pasan por la API, por lo que conviene conservar los límites del proxy y usar el proyecto sólo de forma personal.
+- Docker Hub Personal admite un repositorio privado gratuito y repositorios públicos ilimitados, sujeto a sus límites de uso razonable.
+- Los servicios y sus condiciones pueden cambiar. Revisa las fuentes oficiales enlazadas al final antes de una publicación futura.
 
-## Plan de despliegue
+## Requisitos
 
-1. Subir a `main` los cambios de los dos repositorios GitHub.
-2. Crear la API en Render desde el Blueprint `render.yaml` y guardar su URL `onrender.com`.
-3. Crear el frontend en Cloudflare Pages e insertar la URL real de Render durante el build.
-4. Actualizar `CORS_ORIGIN` en Render con la URL exacta que entregue Cloudflare Pages.
-5. Ejecutar healthchecks, smoke test y una prueba manual de búsqueda y lectura.
-6. Mantener despliegue automático desde `main`; ante un fallo, restaurar el despliegue anterior en cada proveedor.
+- Node.js 22 y npm.
+- Docker Desktop con contenedores Linux.
+- Cuentas gratuitas en Cloudflare, Render y Docker Hub.
+- El frontend y el backend descargados en este workspace.
 
-## 1. Preparar GitHub
+No se necesita un repositorio remoto. Git local también es opcional para ejecutar este procedimiento.
 
-Los componentes viven en repositorios separados:
+## Plan resumido
 
-- Frontend: `https://github.com/bravoisaac/Mymangaonline`
-- Backend: `https://github.com/bravoisaac/API_Mymangaonline`
+1. Validar ambos proyectos en local.
+2. Construir la API para `linux/amd64` y subir una versión inmutable a Docker Hub.
+3. Crear en Render un Web Service Free desde esa imagen.
+4. Exportar Expo Web usando la URL pública de Render.
+5. Subir `dist/` mediante Cloudflare Pages Direct Upload.
+6. Reemplazar el CORS provisional por la URL exacta de Pages.
+7. Ejecutar el smoke test y comprobar búsqueda, ficha, capítulo y portadas.
 
-Antes de publicar, confirma que los archivos `.env` reales no estén versionados. Solo deben subirse los archivos terminados en `.example`.
+## 1. Validación local
 
-Validación local de la API:
+Desde la raíz del workspace, valida la API:
 
 ```powershell
-Set-Location API_Mymangaonline
+Set-Location .\API_Mymangaonline
 npm.cmd ci
 npm.cmd run lint
 npm.cmd test
 npm.cmd run build
+Set-Location ..
 ```
 
-Validación local del frontend:
+Valida el frontend:
 
 ```powershell
-Set-Location Mymangaonline
-$env:EXPO_PUBLIC_MYMANGA_API_URL='https://URL-REAL-DE-RENDER.onrender.com/api'
+Set-Location .\Mymangaonline
 npm.cmd ci
 npm.cmd run lint
 npm.cmd run typecheck
-npm.cmd run export:web
+Set-Location ..
 ```
 
-## 2. Desplegar la API en Render Free
+No publiques si alguno de estos comandos falla. Los archivos `.env` reales no deben copiarse a la imagen ni a Pages; los `.dockerignore` existentes ya los excluyen.
 
-1. En Render, elige **New > Blueprint**.
-2. Conecta `bravoisaac/API_Mymangaonline`.
-3. Render detectará `render.yaml` en la raíz.
-4. Cuando solicite `CORS_ORIGIN`, escribe inicialmente la URL que planeas usar en Cloudflare, por ejemplo `https://mymangaonline.pages.dev`. Si el nombre final cambia, se corrige en el paso 4.
-5. Confirma que el servicio use el plan **Free** antes de crearlo.
-6. Espera a que `/api/health` quede saludable y guarda la URL exacta asignada, por ejemplo `https://mymangaonline-api.onrender.com`.
+## 2. Publicar la imagen de la API en Docker Hub
 
-No agregues `PORT`: Render la define y la API ya lee `process.env.PORT`. El Blueprint configura `TRUST_PROXY=1` para el subdominio directo de Render. Si después pones la API detrás de otro proxy o CDN, vuelve a revisar ese número porque afecta la IP usada por el rate limit.
+### 2.1 Crear el repositorio
 
-Prueba inicial:
+En Docker Hub crea `mymangaonline-api`. Para mantener el código menos expuesto, usa el único repositorio privado incluido en el plan Personal. Render admite credenciales de Docker Hub para leer imágenes privadas.
+
+Inicia sesión desde Docker Desktop o con:
 
 ```powershell
-Invoke-RestMethod https://URL-REAL-DE-RENDER.onrender.com/api/health
+docker login
 ```
 
-La respuesta debe contener `ok: true`. En el plan gratuito, la primera prueba puede tardar mientras la instancia despierta.
+### 2.2 Construir y subir una versión
 
-## 3. Desplegar el frontend en Cloudflare Pages
+Sustituye `TU_USUARIO` y cambia la etiqueta en cada publicación:
 
-1. En Cloudflare, abre **Workers & Pages > Create > Pages > Connect to Git**.
-2. Conecta `bravoisaac/Mymangaonline` y selecciona la rama de producción `main`.
-3. Usa esta configuración:
+```powershell
+Set-Location .\API_Mymangaonline
+$image='TU_USUARIO/mymangaonline-api:1.0.0'
+docker build --platform linux/amd64 --tag $image .
+docker push $image
+Set-Location ..
+```
 
-| Campo | Valor |
+Render exige imágenes `linux/amd64`. Usa etiquetas como `1.0.0`, `1.0.1` o una fecha; no dependas únicamente de `latest`, porque una etiqueta inmutable permite identificar y restaurar una versión.
+
+## 3. Crear la API en Render sin Git
+
+1. Abre Render y elige **New > Web Service**.
+2. En **Source Code**, selecciona **Existing Image**.
+3. Indica `docker.io/TU_USUARIO/mymangaonline-api:1.0.0`.
+4. Si el repositorio es privado, agrega una credencial de Docker Hub con un token de acceso, no con tu contraseña principal.
+5. Elige un nombre, una región cercana y el tipo de instancia **Free**.
+6. Configura **Health Check Path** como `/api/health`.
+7. Agrega estas variables:
+
+| Variable | Valor inicial |
 | --- | --- |
-| Framework preset | None |
-| Root directory | `/` o vacío |
-| Build command | `npm run export:web` |
-| Build output directory | `dist` |
+| `NODE_ENV` | `production` |
+| `CORS_ORIGIN` | `https://mymangaonline-personal.pages.dev` (provisional) |
+| `TRUST_PROXY` | `1` |
+| `INCLUDE_ERROR_STACKS` | `false` |
+| `MANGADEX_ENABLED` | `true` |
+| `COMICK_ENABLED` | `true` |
+| `TRANSLATION_ENABLED` | `false` |
 
-4. Agrega estas variables de producción:
+Render define `PORT` automáticamente; no lo agregues. Los scrapers y providers opcionales permanecen desactivados por defecto.
 
-| Variable | Valor |
-| --- | --- |
-| `NODE_VERSION` | `22` |
-| `EXPO_PUBLIC_MYMANGA_API_URL` | `https://URL-REAL-DE-RENDER.onrender.com/api` |
+Cuando termine el despliegue, guarda la URL asignada y comprueba:
 
-`EXPO_PUBLIC_MYMANGA_API_URL` es pública por diseño y no debe contener credenciales. No agregues tokens, contraseñas ni claves privadas con prefijo `EXPO_PUBLIC_`.
+```powershell
+$api='https://TU-API.onrender.com/api'
+Invoke-RestMethod "$api/health"
+```
 
-5. Inicia el despliegue y guarda la URL final `https://<proyecto>.pages.dev`.
-6. Comprueba directamente `/`, `/reader` y `/manga`. Cloudflare sirve los archivos HTML exportados por Expo con rutas sin extensión; no hace falta una regla SPA adicional.
+La respuesta debe incluir `ok: true`. La primera solicitud puede tardar mientras el servicio gratuito despierta.
 
-## 4. Cerrar CORS con la URL real
+## 4. Exportar el frontend con la URL de Render
 
-En Render abre el servicio, entra a **Environment** y deja:
+`EXPO_PUBLIC_MYMANGA_API_URL` se inserta en el JavaScript durante el build. Es pública por diseño y nunca debe contener contraseñas, tokens ni claves privadas.
+
+```powershell
+Set-Location .\Mymangaonline
+$env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
+npm.cmd run export:web
+Set-Location ..
+```
+
+El resultado queda en `Mymangaonline/dist/`. Si cambia la URL de la API, es obligatorio volver a exportar y subir el frontend.
+
+## 5. Publicar el frontend en Cloudflare Pages sin Git
+
+### Opción recomendada: Wrangler
+
+```powershell
+npx.cmd wrangler login
+npx.cmd wrangler pages project create
+npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-personal
+```
+
+En la creación elige un nombre disponible y usa `production` como nombre de rama de producción; es sólo una etiqueta de Pages y no requiere un repositorio Git. Guarda la URL final que muestre Wrangler.
+
+Para futuras versiones sólo necesitas volver a exportar y ejecutar:
+
+```powershell
+npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-personal
+```
+
+### Opción visual: arrastrar y soltar
+
+En Cloudflare abre **Workers & Pages > Create application > Get started > Drag and drop**, crea el proyecto y carga la carpeta `dist`. Esta opción tiene un límite menor de archivos que Wrangler, pero sirve si no quieres usar la CLI.
+
+Un proyecto creado como Direct Upload no puede convertirse después en un proyecto con integración Git; habría que crear otro proyecto de Pages.
+
+## 6. Cerrar CORS con el dominio real
+
+En Render abre **Environment** y reemplaza el valor provisional:
 
 ```env
 CORS_ORIGIN=https://URL-REAL.pages.dev
 ```
 
-Debe ser el origen exacto: esquema y host, sin ruta y sin `/` final. Guarda y despliega de nuevo. Si agregas un dominio propio después, usa ambos orígenes separados por coma durante la transición.
+Debe ser el origen exacto: `https`, host, sin ruta y sin `/` final. Guarda los cambios y espera el nuevo despliegue. No uses `*`; la API lo rechaza en producción.
 
-No uses `CORS_ORIGIN=*` en producción; la API está configurada para rechazarlo al arrancar.
-
-## 5. Verificación final
-
-Primero despierta y verifica la API:
+## 7. Verificación final
 
 ```powershell
-$api='https://URL-REAL-DE-RENDER.onrender.com/api'
+$api='https://TU-API.onrender.com/api'
 $web='https://URL-REAL.pages.dev'
 
 Invoke-RestMethod "$api/health"
 Invoke-WebRequest "$web/reader"
-```
 
-Después, desde el repositorio frontend:
-
-```powershell
 $env:SMOKE_WEB_URL=$web
 $env:SMOKE_API_URL=$api
 $env:SMOKE_REQUIRE_PRODUCTION_HEADERS='true'
+Set-Location .\Mymangaonline
 npm.cmd run smoke:deploy
+Set-Location ..
 ```
 
-El smoke test valida ruta estática, SEO, CORS, cabeceras de seguridad, healthcheck, rate limit, búsqueda real y proxy de una portada.
+Prueba además en escritorio y móvil:
 
-Prueba manual mínima:
-
-1. Abrir inicio y `/reader` en escritorio y móvil.
+1. Abrir `/` y `/reader`.
 2. Buscar `bleach`.
 3. Abrir una ficha y un capítulo.
-4. Confirmar que las portadas cargan y que la consola no muestra errores CORS.
+4. Confirmar que cargan las portadas y que la consola no muestra errores CORS.
 
-## 6. Operación, límites y rollback
+## Actualizar una versión
 
-- Cada push válido a `main` genera un despliegue nuevo.
-- Render espera que los checks del backend pasen antes de desplegar.
-- Cloudflare conserva despliegues anteriores; Render Free permite volver a los dos despliegues previos recientes.
-- Si falla el frontend, restaura el despliegue anterior de Pages.
-- Si falla la API, restaura primero Render y repite `/api/health` y el smoke completo.
-- No uses servicios de "ping" para evitar el reposo: consumen las horas gratuitas y pueden incumplir las reglas del proveedor.
-- Revisa mensualmente el consumo de ancho de banda y horas. Con tráfico alto de portadas, Render Free es el primer componente que necesitará migrar.
+### Backend
 
-## Seguridad y pendientes conocidos
+```powershell
+Set-Location .\API_Mymangaonline
+$image='TU_USUARIO/mymangaonline-api:1.0.1'
+npm.cmd ci
+npm.cmd run lint
+npm.cmd test
+npm.cmd run build
+docker build --platform linux/amd64 --tag $image .
+docker push $image
+Set-Location ..
+```
 
-- La API pasa TypeScript, build y 29 pruebas, y `npm audit --omit=dev --audit-level=high` no reporta vulnerabilidades.
-- El frontend pasa lint, TypeScript y exportación estática.
-- El audit del frontend reporta vulnerabilidades transitivas altas en herramientas de Expo/Metro (`image-size` y `nanoid`) y una moderada en `uuid`. Esas dependencias participan en desarrollo/build y no se ejecutan en Cloudflare como servidor Node, pero siguen siendo un riesgo de cadena de suministro. No ejecutes `npm audit fix --force`: actualmente propone bajar a Expo 53. Actualiza cuando Expo SDK 56 publique una resolución compatible y vuelve a ejecutar todas las validaciones.
-- Los scrapers no auditados y la traducción permanecen desactivados en `render.yaml`.
-- La API no almacena cuentas, archivos ni base de datos; la biblioteca del usuario vive en el navegador.
-- El proxy de imágenes tiene límites de tamaño, concurrencia, cola y solicitudes. No los eleves en el plan gratuito sin medir memoria y tráfico saliente.
+En Render cambia la referencia de imagen de `:1.0.0` a `:1.0.1` y lanza el despliegue manual. Las imágenes existentes no tienen despliegue automático; esto es intencional en el flujo sin Git.
 
-## Fuentes oficiales consultadas
+### Frontend
 
-- [Expo: publicar una aplicación web](https://docs.expo.dev/deploy/web/)
-- [Expo: publicación de sitios y copia de `public` a `dist`](https://docs.expo.dev/guides/publishing-websites/)
-- [Cloudflare Pages: configuración de build](https://developers.cloudflare.com/pages/configuration/build-configuration/)
-- [Cloudflare Pages: cabeceras personalizadas](https://developers.cloudflare.com/pages/configuration/headers/)
-- [Cloudflare Pages: límites del plan Free](https://developers.cloudflare.com/pages/platform/limits/)
-- [Cloudflare Pages: resolución de rutas HTML](https://developers.cloudflare.com/pages/configuration/serving-pages/)
-- [Render: servicios gratuitos y sus límites](https://render.com/docs/free)
-- [Render: referencia de `render.yaml`](https://render.com/docs/blueprint-spec)
-- [Render: despliegue de Express](https://render.com/docs/deploy-node-express-app)
-- [Render: healthchecks](https://render.com/docs/health-checks)
+```powershell
+Set-Location .\Mymangaonline
+$env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
+npm.cmd ci
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run export:web
+Set-Location ..
+npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-personal
+```
+
+Ejecuta siempre el smoke test después de actualizar cualquiera de los dos componentes.
+
+## Rollback y copias de seguridad
+
+- Frontend: en Pages selecciona un despliegue anterior y promuévelo de nuevo a producción.
+- Backend: conserva las etiquetas anteriores en Docker Hub, cambia Render a la etiqueta previa y despliega manualmente.
+- Código: guarda una copia privada y versionada fuera de los proveedores de despliegue. Docker Hub almacena artefactos ejecutables, no sustituye una copia mantenible del código fuente.
+- No uses servicios de “ping” para impedir que Render duerma; gastan las horas gratuitas y pueden contrariar las condiciones del proveedor.
+
+## Fuentes oficiales
+
+- [Cloudflare Pages: Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)
+- [Cloudflare Pages: límites](https://developers.cloudflare.com/pages/platform/limits/)
+- [Render: desplegar una imagen existente](https://render.com/docs/deploying-an-image)
+- [Render: servicios gratuitos y límites](https://render.com/docs/free)
+- [Render: despliegues manuales](https://render.com/docs/deploys)
+- [Docker Hub: uso y límites](https://docs.docker.com/docker-hub/usage/)
