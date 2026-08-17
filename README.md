@@ -152,6 +152,7 @@ npm run export:web
 
 ## Despliegue
 
+- [Abrir la instancia personal desplegada](https://mymangaonline-personal.pages.dev)
 - [Producción con Docker Compose y Nginx](./PRODUCTION.md)
 - [Cloudflare Pages + Render Free, mediante carga manual y sin Git](./DEPLOY_FREE.md)
 

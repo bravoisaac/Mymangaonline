@@ -24,6 +24,33 @@ async function main() {
   assert.match(readerHtml, /<title[^>]*>Explorar manga \| MyMangaOnline<\/title>/i, 'Falta el titulo SEO de /reader');
   assert.match(readerHtml, /name=["']description["']/i, 'Falta la descripcion SEO de /reader');
 
+  const scriptSources = [...readerHtml.matchAll(/<script[^>]+src=["']([^"']+\.js[^"']*)["']/gi)]
+    .map((match) => new URL(match[1], webBaseUrl).toString());
+
+  assert.ok(scriptSources.length > 0, 'No se encontraron bundles JavaScript en el frontend desplegado');
+
+  const deployedJavaScript = await Promise.all(
+    scriptSources.map(async (scriptUrl) => {
+      const scriptResponse = await fetchWithTimeout(scriptUrl);
+      assert.equal(scriptResponse.status, 200, `El bundle web no responde 200: ${scriptUrl}`);
+      return scriptResponse.text();
+    }),
+  );
+  const deployedBundle = deployedJavaScript.join('\n');
+
+  assert.ok(
+    deployedBundle.includes(apiBaseUrl),
+    `El frontend desplegado no apunta a la API esperada: ${apiBaseUrl}`,
+  );
+
+  if (requireProductionHeaders) {
+    assert.doesNotMatch(
+      deployedBundle,
+      /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api/i,
+      'El frontend de produccion contiene una URL local para la API',
+    );
+  }
+
   if (requireProductionHeaders) {
     const contentSecurityPolicy = readerResponse.headers.get('content-security-policy') || '';
 

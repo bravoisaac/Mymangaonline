@@ -22,6 +22,18 @@ Usuario -> https://<sitio>.pages.dev -> https://<api>.onrender.com/api
 
 No hace falta comprar un dominio. Se pueden conservar los subdominios HTTPS `pages.dev` y `onrender.com`.
 
+## Despliegue personal actual
+
+| Recurso | Valor |
+| --- | --- |
+| Frontend | `https://mymangaonline-personal.pages.dev` |
+| API | `https://mymangaonline-api.onrender.com/api` |
+| Health check | `https://mymangaonline-api.onrender.com/api/health` |
+| Imagen | `docker.io/isaacbravomelo/mymangaonline-api:1.0.0` |
+| Digest | `sha256:91a0d5491fd9a55ad6bae9a36d5aa64b84f72d7f4dddde7482ce78df1b45584b` |
+
+El despliegue se verificó el 16 de agosto de 2026 con `npm run smoke:deploy`: lector web, cabeceras de producción, CORS, búsqueda agregada y proxy de imágenes respondieron correctamente.
+
 > Sin Git no significa sin copias de seguridad. Conserva una copia privada del código y no borres las imágenes Docker etiquetadas que todavía puedas necesitar para volver atrás.
 
 ## Coste y limitaciones
@@ -117,7 +129,7 @@ Render exige imágenes `linux/amd64`. Usa etiquetas como `1.0.0`, `1.0.1` o una 
 | Variable | Valor inicial |
 | --- | --- |
 | `NODE_ENV` | `production` |
-| `CORS_ORIGIN` | `https://mymangaonline-personal.pages.dev` (provisional) |
+| `CORS_ORIGIN` | `https://mymangaonline-personal.pages.dev` |
 | `TRUST_PROXY` | `1` |
 | `INCLUDE_ERROR_STACKS` | `false` |
 | `MANGADEX_ENABLED` | `true` |
