@@ -182,6 +182,8 @@ npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-
 
 En Cloudflare abre **Workers & Pages > Create application > Get started > Drag and drop**, crea el proyecto y carga la carpeta `dist`. Esta opción tiene un límite menor de archivos que Wrangler, pero sirve si no quieres usar la CLI.
 
+En Windows, selecciona directamente la carpeta `dist`; no subas un ZIP creado con `Compress-Archive`. Ese ZIP puede conservar separadores `\` en las rutas internas y provocar que Cloudflare entregue el HTML de respaldo en lugar de los bundles JavaScript. Antes de publicar, `npm run export:web` limpia la caché de Metro para que los cambios en `EXPO_PUBLIC_MYMANGA_API_URL` queden incorporados.
+
 Un proyecto creado como Direct Upload no puede convertirse después en un proyecto con integración Git; habría que crear otro proyecto de Pages.
 
 ## 6. Cerrar CORS con el dominio real

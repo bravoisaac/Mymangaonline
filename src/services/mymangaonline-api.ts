@@ -294,6 +294,7 @@ async function fetchApiJson<TResponse>(url: string, options: ApiRequestOptions =
 
   try {
     const response = await fetch(url, {
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
       },

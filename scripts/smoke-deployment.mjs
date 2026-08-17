@@ -33,6 +33,11 @@ async function main() {
     scriptSources.map(async (scriptUrl) => {
       const scriptResponse = await fetchWithTimeout(scriptUrl);
       assert.equal(scriptResponse.status, 200, `El bundle web no responde 200: ${scriptUrl}`);
+      assert.match(
+        scriptResponse.headers.get('content-type') || '',
+        /(?:java|ecma)script/i,
+        `Cloudflare no entrega el bundle como JavaScript: ${scriptUrl}`,
+      );
       return scriptResponse.text();
     }),
   );
