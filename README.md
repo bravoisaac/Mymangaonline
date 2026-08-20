@@ -10,6 +10,10 @@
 [![Platforms](https://img.shields.io/badge/Plataformas-Web%20%7C%20Android%20%7C%20iOS-2563EB)](#plataformas)
 [![License](https://img.shields.io/badge/Licencia-MIT-16A34A)](./LICENSE)
 
+<p>
+  <a href="https://mymangaonline-personal.pages.dev"><strong>Abrir aplicación web</strong></a>
+</p>
+
 </div>
 
 ![Inicio de My Manga Online en escritorio](./output/playwright/readme-home-desktop.png)
