@@ -1,7 +1,7 @@
 import { Image, type ImageLoadEventData } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +13,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -23,6 +24,7 @@ import {
   type MangaSearchResult,
 } from '@/services/mangadex';
 import {
+  getChapterPageRetryUrls,
   getChapterPagesFromApi,
   getMangaChaptersFromApi,
   getMangaDetailsFromApi,
@@ -32,6 +34,7 @@ import {
 import { markChapterViewed } from '@/services/user-library';
 
 const CHAPTER_BATCH_SIZE = 10;
+const CHAPTER_PAGE_RETRY_DELAYS_MS = [2000, 4000, 8000] as const;
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -59,7 +62,9 @@ function getInitialChapterOrder(value: string | string[] | undefined): 'asc' | '
 export default function ChapterScreen() {
   const theme = useTheme();
   const { contentInset, isCompact } = useResponsiveLayout();
-  const params = useLocalSearchParams();
+  const routeParams = useLocalSearchParams();
+  const isHydrated = useHydrated();
+  const params = (isHydrated ? routeParams : {}) as typeof routeParams;
   const router = useRouter();
   const mangaId = getParam(params.mangaId);
   const chapterId = getParam(params.chapterId);
@@ -97,6 +102,8 @@ export default function ChapterScreen() {
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
   const [isLoadingNext, setIsLoadingNext] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasRequestedFallbackPages = useRef(false);
+  const chapterRequestVersion = useRef(0);
   const currentError = mangaId && chapterId ? error : 'No se encontro el capitulo solicitado';
 
   const selectedChapter = useMemo(
@@ -125,13 +132,15 @@ export default function ChapterScreen() {
     let isActive = true;
     const nextMangaId = mangaId;
     const nextChapterId = chapterId;
+    chapterRequestVersion.current += 1;
+    hasRequestedFallbackPages.current = false;
 
     async function loadChapterPages() {
       try {
         setError(null);
         setChapterPages(null);
         setIsLoading(true);
-        const nextPages = await getChapterPagesFromApi(source, nextChapterId);
+        const nextPages = await getChapterPagesFromApi(source, nextChapterId, { quality: 'data' });
 
         if (!isActive) {
           return;
@@ -187,6 +196,37 @@ export default function ChapterScreen() {
       isActive = false;
     };
   }, [chapterId, chapterOffset, chapterOrder, fallbackManga, mangaId, language, source]);
+
+  const recoverChapterPages = useCallback(async () => {
+    if (!chapterId || source !== 'mangadex' || hasRequestedFallbackPages.current) {
+      return;
+    }
+
+    hasRequestedFallbackPages.current = true;
+    const recoveryChapterId = chapterId;
+    const recoveryRequestVersion = chapterRequestVersion.current;
+
+    try {
+      const fallbackPages = await getChapterPagesFromApi(source, recoveryChapterId, { quality: 'data-saver' });
+
+      if (chapterRequestVersion.current !== recoveryRequestVersion) {
+        return;
+      }
+
+      setChapterPages(fallbackPages);
+      setError(null);
+    } catch (recoveryError) {
+      if (chapterRequestVersion.current !== recoveryRequestVersion) {
+        return;
+      }
+
+      setError(
+        recoveryError instanceof Error
+          ? recoveryError.message
+          : 'No se pudieron renovar las paginas del capitulo',
+      );
+    }
+  }, [chapterId, source]);
 
   useEffect(() => {
     if (!chapterPages || !nextChapter) {
@@ -313,7 +353,13 @@ export default function ChapterScreen() {
       data={chapterPages?.pageUrls ?? []}
       keyExtractor={(pageUrl, index) => `${chapterId}-${index}-${pageUrl}`}
       renderItem={({ item, index }) => (
-        <ChapterPage pageUrl={item} pageIndex={index} chapterId={chapterId} />
+        <ChapterPage
+          pageUrl={item}
+          pageIndex={index}
+          chapterId={chapterId}
+          source={source}
+          onFinalLoadError={recoverChapterPages}
+        />
       )}
       ItemSeparatorComponent={PageSeparator}
       ListHeaderComponent={
@@ -391,12 +437,47 @@ type ChapterPageProps = {
   pageUrl: string;
   pageIndex: number;
   chapterId?: string;
+  source: MangaSourceId;
+  onFinalLoadError: () => void;
 };
 
-const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }: ChapterPageProps) {
+const ChapterPage = memo(function ChapterPage({
+  pageUrl,
+  pageIndex,
+  chapterId,
+  source,
+  onFinalLoadError,
+}: ChapterPageProps) {
   const [aspectRatio, setAspectRatio] = useState(720 / 1040);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const hasReportedFinalError = useRef(false);
+  const retryUrls = useMemo(() => getChapterPageRetryUrls(source, pageUrl), [pageUrl, source]);
+  const activePageUrl = retryUrls[Math.min(retryCount, retryUrls.length - 1)] ?? pageUrl;
+
+  useEffect(() => {
+    if (!hasLoadError || retryCount >= CHAPTER_PAGE_RETRY_DELAYS_MS.length) {
+      return;
+    }
+
+    const retryTimeout = setTimeout(() => {
+      setRetryCount((currentCount) => currentCount + 1);
+      setHasLoadError(false);
+    }, CHAPTER_PAGE_RETRY_DELAYS_MS[retryCount]);
+
+    return () => clearTimeout(retryTimeout);
+  }, [hasLoadError, retryCount]);
+
+  useEffect(() => {
+    if (
+      hasLoadError &&
+      retryCount >= CHAPTER_PAGE_RETRY_DELAYS_MS.length &&
+      !hasReportedFinalError.current
+    ) {
+      hasReportedFinalError.current = true;
+      onFinalLoadError();
+    }
+  }, [hasLoadError, onFinalLoadError, retryCount]);
 
   function handleLoad(event: ImageLoadEventData) {
     setHasLoadError(false);
@@ -409,37 +490,52 @@ const ChapterPage = memo(function ChapterPage({ pageUrl, pageIndex, chapterId }:
   }
 
   function retryImage() {
-    setRetryCount((currentCount) => currentCount + 1);
+    setRetryCount(0);
     setHasLoadError(false);
+    hasReportedFinalError.current = false;
   }
 
   if (hasLoadError) {
+    const isWaitingToRetry = retryCount < CHAPTER_PAGE_RETRY_DELAYS_MS.length;
+
     return (
       <ThemedView
         accessibilityLiveRegion="polite"
         type="backgroundElement"
         style={[styles.readerPageError, { aspectRatio }]}>
-        <ThemedText type="smallBold">No se pudo cargar la pagina {pageIndex + 1}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Comprueba tu conexion o vuelve a intentarlo.
-        </ThemedText>
-        <Pressable
-          accessibilityLabel={`Reintentar pagina ${pageIndex + 1}`}
-          accessibilityRole="button"
-          onPress={retryImage}
-          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.primaryButtonText}>
-            Reintentar
-          </ThemedText>
-        </Pressable>
+        {isWaitingToRetry ? (
+          <>
+            <ActivityIndicator size="small" />
+            <ThemedText type="smallBold">Cargando pagina {pageIndex + 1}...</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Reintento automatico {retryCount + 1} de {CHAPTER_PAGE_RETRY_DELAYS_MS.length}.
+            </ThemedText>
+          </>
+        ) : (
+          <>
+            <ThemedText type="smallBold">No se pudo cargar la pagina {pageIndex + 1}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Comprueba tu conexion o vuelve a intentarlo.
+            </ThemedText>
+            <Pressable
+              accessibilityLabel={`Reintentar pagina ${pageIndex + 1}`}
+              accessibilityRole="button"
+              onPress={retryImage}
+              style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+              <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                Reintentar
+              </ThemedText>
+            </Pressable>
+          </>
+        )}
       </ThemedView>
     );
   }
 
   return (
     <Image
-      key={`${pageUrl}-${retryCount}`}
-      source={{ uri: pageUrl }}
+      key={`${activePageUrl}-${retryCount}`}
+      source={{ uri: activePageUrl }}
       style={[styles.readerPage, { aspectRatio }]}
       accessibilityLabel={`Pagina ${pageIndex + 1}`}
       contentFit="cover"

@@ -219,6 +219,12 @@ export type ApiRequestOptions = {
   timeoutMs?: number;
 };
 
+export type ChapterPageQuality = 'data' | 'data-saver';
+
+type ChapterPagesRequestOptions = {
+  quality?: ChapterPageQuality;
+};
+
 export const MYMANGA_API_BASE_URL = (
   process.env.EXPO_PUBLIC_MYMANGA_API_URL ?? DEFAULT_API_BASE_URL
 ).replace(/\/$/, '');
@@ -602,9 +608,34 @@ export async function getMangaChaptersFromApi(
   };
 }
 
-export async function getChapterPagesFromApi(source: MangaSourceId, chapterId: string): Promise<ChapterPages> {
-  const data = await fetchCachedApiJson<ChapterPagesResponse>(
-    buildApiUrl(`/manga/${encodeURIComponent(source)}/chapter/${encodeURIComponent(chapterId)}/pages`),
+export function getChapterPageRetryUrls(source: MangaSourceId, pageUrl: string) {
+  if (source !== 'mangadex') {
+    return [pageUrl];
+  }
+
+  try {
+    return [
+      pageUrl,
+      ...Array.from({ length: 3 }, (_, index) => {
+        const retryUrl = new URL(pageUrl);
+        retryUrl.searchParams.set('mmo_retry', String(index + 1));
+        return retryUrl.toString();
+      }),
+    ];
+  } catch {
+    return [pageUrl];
+  }
+}
+
+export async function getChapterPagesFromApi(
+  source: MangaSourceId,
+  chapterId: string,
+  options: ChapterPagesRequestOptions = {},
+): Promise<ChapterPages> {
+  const data = await fetchApiJson<ChapterPagesResponse>(
+    buildApiUrl(`/manga/${encodeURIComponent(source)}/chapter/${encodeURIComponent(chapterId)}/pages`, {
+      quality: options.quality,
+    }),
   );
 
   return {

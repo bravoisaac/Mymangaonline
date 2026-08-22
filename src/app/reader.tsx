@@ -9,14 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
+import { useHydratedWindowDimensions, useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { useTheme } from '@/hooks/use-theme';
 import {
   getAllMangaLibraryFromApi,
@@ -169,7 +168,7 @@ function getVisiblePageNumbers(currentPage: number, pageCount: number) {
 
 export default function ReaderScreen() {
   const theme = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth } = useHydratedWindowDimensions();
   const { contentInset } = useResponsiveLayout();
   const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const params = useLocalSearchParams();

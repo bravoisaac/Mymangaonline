@@ -7,13 +7,13 @@ import {
   TabListProps,
 } from 'expo-router/ui';
 import type { Href } from 'expo-router';
-import { Pressable, View, StyleSheet, useWindowDimensions } from 'react-native';
+import { Pressable, View, StyleSheet } from 'react-native';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { CompactWebBreakpoint } from '@/hooks/use-responsive-layout';
+import { CompactWebBreakpoint, useHydratedWindowDimensions } from '@/hooks/use-responsive-layout';
 
 const SCRAPERS_HREF = '/scrapers' as Href;
 
@@ -52,7 +52,7 @@ export default function AppTabs() {
 }
 
 export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
-  const { width } = useWindowDimensions();
+  const { width } = useHydratedWindowDimensions();
   const isCompact = width < CompactWebBreakpoint;
 
   return (
@@ -71,7 +71,7 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
 }
 
 export function CustomTabList(props: TabListProps) {
-  const { width } = useWindowDimensions();
+  const { width } = useHydratedWindowDimensions();
   const isCompact = width < CompactWebBreakpoint;
 
   return (
