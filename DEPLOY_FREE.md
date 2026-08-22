@@ -149,11 +149,13 @@ La respuesta debe incluir `ok: true`. La primera solicitud puede tardar mientras
 
 ## 4. Exportar el frontend con la URL de Render
 
-`EXPO_PUBLIC_MYMANGA_API_URL` se inserta en el JavaScript durante el build. Es pública por diseño y nunca debe contener contraseñas, tokens ni claves privadas.
+Las variables `EXPO_PUBLIC_*` se insertan en el JavaScript durante el build. Configura previamente Supabase según [`supabase/README.md`](./supabase/README.md) y usa exclusivamente su clave Publishable.
 
 ```powershell
 Set-Location .\Mymangaonline
 $env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
+$env:EXPO_PUBLIC_SUPABASE_URL='https://TU-PROYECTO.supabase.co'
+$env:EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_REEMPLAZAR'
 npm.cmd run export:web
 Set-Location ..
 ```
@@ -243,6 +245,8 @@ En Render cambia la referencia de imagen de `:1.0.0` a `:1.0.1` y lanza el despl
 ```powershell
 Set-Location .\Mymangaonline
 $env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
+$env:EXPO_PUBLIC_SUPABASE_URL='https://TU-PROYECTO.supabase.co'
+$env:EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_REEMPLAZAR'
 npm.cmd ci
 npm.cmd run lint
 npm.cmd run typecheck

@@ -18,7 +18,7 @@
 
 ![Inicio de My Manga Online en escritorio](./output/playwright/readme-home-desktop.png)
 
-My Manga Online combina catálogos de MangaDex y ComicK, ofrece búsqueda y filtros por idioma o género, conserva una biblioteca personal en el dispositivo y permite continuar la lectura desde un lector adaptable.
+My Manga Online combina catálogos de MangaDex y ComicK, ofrece búsqueda y filtros por idioma o género, sincroniza una biblioteca personal entre navegadores y permite continuar la lectura desde un lector adaptable.
 
 ## Características
 
@@ -28,7 +28,7 @@ My Manga Online combina catálogos de MangaDex y ComicK, ofrece búsqueda y filt
 - Compatibilidad con capítulos `ES` y `ES-419`.
 - Fichas con portada, descripción localizada, estado, año, autores y géneros.
 - Capítulos paginados, ordenables y con seguimiento de lectura.
-- Biblioteca personal persistente en el dispositivo.
+- Perfil con correo y contraseña, sesión persistente y biblioteca sincronizada entre navegadores.
 - Interfaz responsive con navegación específica para escritorio y móvil.
 - Tema claro u oscuro según la configuración del sistema.
 - Estados de carga, error y contenido vacío en los flujos asíncronos.
@@ -54,7 +54,8 @@ My Manga Online combina catálogos de MangaDex y ComicK, ofrece búsqueda y filt
 ```mermaid
 flowchart LR
     UI["Pantallas de Expo Router"] --> S["Servicios tipados"]
-    UI --> B["Biblioteca local"]
+    UI --> B["Copia local de biblioteca"]
+    B --> SB["Supabase Auth + PostgreSQL/RLS"]
     S --> API["API_Mymangaonline"]
     API --> MD["MangaDex"]
     API --> CK["ComicK"]
@@ -64,7 +65,7 @@ flowchart LR
 | --- | --- | --- |
 | Rutas y pantallas | `src/app/` | Navegación, composición y estados de pantalla |
 | Componentes | `src/components/` | Navegación y elementos visuales reutilizables |
-| Servicios | `src/services/` | Cliente de API, normalización y biblioteca local |
+| Servicios | `src/services/` | Cliente de API, perfil, sincronización y copia local |
 | Hooks | `src/hooks/` | Tema, plataforma y diseño responsive |
 | Diseño | `src/constants/theme.ts` | Colores, espaciado y tokens visuales |
 
@@ -79,12 +80,14 @@ flowchart LR
 | TypeScript | Tipado estático |
 | Expo Image | Carga y optimización de portadas |
 | Reanimated | Animaciones e interacciones |
+| Supabase | Autenticación y biblioteca remota protegida con RLS |
 
 ## Requisitos
 
 - Node.js 22 (Expo SDK 56 requiere Node 20.19 o superior; 22 es la versión recomendada para este workspace).
 - npm.
 - Una instancia de [API_Mymangaonline](https://github.com/bravoisaac/API_Mymangaonline) en ejecución.
+- Un proyecto de Supabase configurado según [`supabase/README.md`](./supabase/README.md).
 - Expo Go, Android Studio o Xcode solamente si se utilizará una plataforma móvil.
 
 ## Instalación
@@ -99,9 +102,11 @@ Crea `.env.local` en la raíz del proyecto y define la URL de la API:
 
 ```env
 EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
+EXPO_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_reemplazar
 ```
 
-> Las variables `EXPO_PUBLIC_*` quedan incluidas en el cliente; nunca almacenes secretos en ellas.
+> Las variables `EXPO_PUBLIC_*` quedan incluidas en el cliente. Usa sólo la clave Publishable de Supabase; nunca una clave `service_role`.
 
 Inicia la aplicación web:
 

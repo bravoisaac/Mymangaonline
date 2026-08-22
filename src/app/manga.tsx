@@ -116,7 +116,9 @@ export default function MangaScreen() {
   const [chapterOrder, setChapterOrder] = useState<ChapterOrder>('desc');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSavingManga, setIsSavingManga] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [, refreshSavedState] = useState(0);
   const [, refreshViewedState] = useState(0);
   const currentError = mangaId ? error : 'No se encontro el manga solicitado';
@@ -229,7 +231,7 @@ export default function MangaScreen() {
     refreshViewedState((current) => current + 1);
   }
 
-  function toggleSavedManga() {
+  async function toggleSavedManga() {
     if (!manga || !mangaId) {
       return;
     }
@@ -239,14 +241,25 @@ export default function MangaScreen() {
       return;
     }
 
-    if (isSaved) {
-      removeSavedManga(currentUser.id, mangaId);
-      refreshSavedState((current) => current + 1);
-      return;
-    }
+    try {
+      setIsSavingManga(true);
+      setLibraryError(null);
 
-    saveManga(currentUser.id, manga, language);
-    refreshSavedState((current) => current + 1);
+      if (isSaved) {
+        await removeSavedManga(currentUser.id, mangaId);
+      } else {
+        await saveManga(currentUser.id, manga, language);
+      }
+    } catch (saveError) {
+      setLibraryError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'No se pudo actualizar la biblioteca sincronizada',
+      );
+    } finally {
+      refreshSavedState((current) => current + 1);
+      setIsSavingManga(false);
+    }
   }
 
   return (
@@ -365,18 +378,25 @@ export default function MangaScreen() {
                   </ThemedText>
                 </ThemedView>
                 <Pressable
-                  onPress={toggleSavedManga}
+                  disabled={isSavingManga}
+                  onPress={() => void toggleSavedManga()}
                   style={({ pressed }) => [
                     styles.saveButton,
                     isCompact && styles.compactActionButton,
                     isSaved && styles.saveButtonActive,
+                    isSavingManga && styles.disabled,
                     pressed && styles.pressed,
                   ]}>
                   <ThemedText type="smallBold" style={isSaved ? styles.primaryButtonText : undefined}>
-                    {isSaved ? 'Guardado' : 'Guardar'}
+                    {isSavingManga ? 'Sincronizando...' : isSaved ? 'Guardado' : 'Guardar'}
                   </ThemedText>
                 </Pressable>
               </View>
+              {libraryError && (
+                <ThemedText type="small" style={styles.libraryError}>
+                  {libraryError}
+                </ThemedText>
+              )}
             </View>
           </ThemedView>
 
@@ -661,6 +681,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
+  },
+  libraryError: {
+    color: '#b72d3b',
   },
   startButton: {
     minHeight: 44,

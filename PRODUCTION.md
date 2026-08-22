@@ -32,8 +32,10 @@ Edita `.env.compose` y reemplaza obligatoriamente:
 - `WEB_ORIGIN`: origen HTTPS exacto del sitio, sin ruta ni `/` final.
 - `IMAGE_TAG`: version inmutable o SHA del commit.
 - `WEB_BIND_ADDRESS`: conserva `127.0.0.1` si existe un proxy TLS local; usa `0.0.0.0` solo si el proveedor necesita alcanzar directamente el puerto publicado.
+- `EXPO_PUBLIC_SUPABASE_URL`: URL publica del proyecto Supabase.
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: clave Publishable; nunca `service_role`.
 
-Los archivos `.env*` reales estan excluidos de Git y de ambos contextos Docker. `EXPO_PUBLIC_MYMANGA_API_URL` queda fijada a `/api` durante el build y no contiene secretos.
+Los archivos `.env*` reales estan excluidos de Git y de ambos contextos Docker. Las variables `EXPO_PUBLIC_*` se incorporan al cliente y sólo pueden contener valores públicos. Antes del primer despliegue ejecuta la migración indicada en [`supabase/README.md`](./supabase/README.md).
 
 ## Construir y arrancar
 
@@ -125,4 +127,3 @@ docker compose --env-file .env.compose down
 ```
 
 Para rollback, restaura `IMAGE_TAG` a la version anterior, ejecuta `up -d` y repite healthcheck y smoke. La cache actual de la API vive en memoria; una recreacion no requiere migraciones ni volumenes persistentes.
-

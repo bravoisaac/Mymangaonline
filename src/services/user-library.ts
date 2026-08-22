@@ -1,30 +1,22 @@
+import type { User } from '@supabase/supabase-js';
+
 import type { MangaLanguage, MangaSearchResult } from './mangadex';
 import type { ScraperMangaResult } from './mymangaonline-api';
 import { filterAllowedMangaTitles, isMangaTitleBlocked } from './manga-policy';
+import { isSupabaseConfigured, requireSupabase, supabase } from './supabase';
 
-const ACCOUNTS_KEY = 'mymangaonline.accounts';
+const LEGACY_ACCOUNTS_KEY = 'mymangaonline.accounts';
 const CURRENT_USER_KEY = 'mymangaonline.currentUser';
 const LIBRARY_KEY_PREFIX = 'mymangaonline.library.';
 const VIEWED_CHAPTERS_KEY_PREFIX = 'mymangaonline.viewedChapters.';
 
-export type AuthProvider = 'local';
-
-export type LocalUser = {
+export type ProfileUser = {
   id: string;
   name: string;
   email: string;
-  provider: AuthProvider;
+  provider: 'supabase';
   pictureUrl?: string;
   createdAt: string;
-};
-
-type LocalAccount = LocalUser & {
-  updatedAt: string;
-};
-
-type LegacyLocalAccount = Omit<LocalAccount, 'provider'> & {
-  provider: AuthProvider | 'email';
-  passwordHash?: unknown;
 };
 
 export type SavedManga = MangaSearchResult & {
@@ -36,6 +28,17 @@ export type SavedManga = MangaSearchResult & {
   scraperMangaId?: string;
   scraperLanguage?: string;
   sourceUrl?: string;
+};
+
+export type ProfileSessionResult = {
+  user: ProfileUser | null;
+  mangas: SavedManga[];
+  message?: string;
+};
+
+type SavedMangaRow = {
+  manga: unknown;
+  saved_at: string;
 };
 
 function getStorage() {
@@ -50,7 +53,7 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function normalizeUserId(email: string) {
+function normalizeLegacyUserId(email: string) {
   return normalizeEmail(email).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
@@ -96,26 +99,6 @@ function writeJson(key: string, value: unknown) {
   storage.setItem(key, JSON.stringify(value));
 }
 
-function getAccounts() {
-  const storedAccounts = readJson<LegacyLocalAccount[]>(ACCOUNTS_KEY, []);
-  const accounts = storedAccounts
-    .filter((account) => account?.id && account.email && account.name)
-    .map(({ passwordHash: _discardedPasswordHash, ...account }) => ({
-      ...account,
-      provider: 'local' as const,
-    }));
-
-  if (storedAccounts.some((account) => 'passwordHash' in account || account.provider !== 'local')) {
-    saveAccounts(accounts);
-  }
-
-  return accounts;
-}
-
-function saveAccounts(accounts: LocalAccount[]) {
-  writeJson(ACCOUNTS_KEY, accounts);
-}
-
 function validateEmail(email: string) {
   const normalizedEmail = normalizeEmail(email);
 
@@ -126,100 +109,339 @@ function validateEmail(email: string) {
   return normalizedEmail;
 }
 
-function toPublicUser(account: LocalAccount, provider = account.provider): LocalUser {
+function validatePassword(password: string) {
+  if (password.length < 8) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres');
+  }
+
+  return password;
+}
+
+function toProfileUser(user: User): ProfileUser {
+  const email = user.email ?? '';
+  const metadataName = typeof user.user_metadata?.name === 'string' ? user.user_metadata.name.trim() : '';
+  const pictureUrl =
+    typeof user.user_metadata?.picture === 'string' ? user.user_metadata.picture : undefined;
+
   return {
-    id: account.id,
-    name: account.name,
-    email: account.email,
-    provider,
-    pictureUrl: account.pictureUrl,
-    createdAt: account.createdAt,
+    id: user.id,
+    name: metadataName || email.split('@')[0] || 'Lector',
+    email,
+    provider: 'supabase',
+    pictureUrl,
+    createdAt: user.created_at,
   };
 }
 
-function setCurrentUser(user: LocalUser) {
+function setCurrentUser(user: ProfileUser) {
   writeJson(CURRENT_USER_KEY, user);
 }
 
-export function getCurrentUser() {
-  getAccounts();
-  const user = readJson<LocalUser | null>(CURRENT_USER_KEY, null);
+function clearCurrentUser() {
+  getStorage()?.removeItem(CURRENT_USER_KEY);
+}
 
-  if (!user?.id || !user.email || !['email', 'local'].includes(user.provider)) {
+function isSavedManga(value: unknown): value is SavedManga {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const manga = value as Partial<SavedManga>;
+
+  return (
+    typeof manga.id === 'string' &&
+    manga.id.length > 0 &&
+    typeof manga.title === 'string' &&
+    typeof manga.savedAt === 'string' &&
+    ['es', 'en', 'pt-br', 'fr'].includes(String(manga.language))
+  );
+}
+
+function mergeSavedMangas(...collections: SavedManga[][]) {
+  const mangasById = new Map<string, SavedManga>();
+
+  collections.flat().forEach((manga) => {
+    const existing = mangasById.get(manga.id);
+
+    if (!existing || Date.parse(manga.savedAt) >= Date.parse(existing.savedAt)) {
+      mangasById.set(manga.id, manga);
+    }
+  });
+
+  return filterAllowedMangaTitles(
+    Array.from(mangasById.values()).sort(
+      (first, second) => Date.parse(second.savedAt) - Date.parse(first.savedAt),
+    ),
+  );
+}
+
+function getFriendlyAuthError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes('invalid login credentials')) {
+    return 'Correo o contraseña incorrectos';
+  }
+
+  if (normalizedMessage.includes('email not confirmed')) {
+    return 'Confirma tu correo antes de iniciar sesion';
+  }
+
+  if (normalizedMessage.includes('user already registered')) {
+    return 'Ya existe un perfil con ese correo';
+  }
+
+  if (normalizedMessage.includes('password')) {
+    return 'La contraseña no cumple los requisitos del perfil';
+  }
+
+  return 'No se pudo completar el acceso al perfil';
+}
+
+function getFriendlyPasswordChangeError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes('invalid login credentials')) {
+    return 'La contraseña actual no es correcta';
+  }
+
+  if (
+    normalizedMessage.includes('same password') ||
+    normalizedMessage.includes('different from the old password')
+  ) {
+    return 'La nueva contraseña debe ser distinta de la actual';
+  }
+
+  if (normalizedMessage.includes('password')) {
+    return 'La nueva contraseña no cumple los requisitos del perfil';
+  }
+
+  return 'No se pudo cambiar la contraseña';
+}
+
+async function getRemoteSavedMangas(userId: string) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('saved_mangas')
+    .select('manga, saved_at')
+    .eq('user_id', userId)
+    .order('saved_at', { ascending: false });
+
+  if (error) {
+    throw new Error('No se pudo descargar la biblioteca sincronizada');
+  }
+
+  return (data as SavedMangaRow[])
+    .map((row) => {
+      if (!isSavedManga(row.manga)) {
+        return null;
+      }
+
+      return {
+        ...row.manga,
+        savedAt: row.saved_at || row.manga.savedAt,
+      };
+    })
+    .filter((manga): manga is SavedManga => manga !== null);
+}
+
+async function upsertRemoteSavedMangas(userId: string, mangas: SavedManga[]) {
+  if (mangas.length === 0) {
+    return;
+  }
+
+  const client = requireSupabase();
+  const { error } = await client.from('saved_mangas').upsert(
+    mangas.map((manga) => ({
+      user_id: userId,
+      manga_id: manga.id,
+      manga,
+      saved_at: manga.savedAt,
+    })),
+    { onConflict: 'user_id,manga_id' },
+  );
+
+  if (error) {
+    throw new Error('No se pudo guardar la biblioteca sincronizada');
+  }
+}
+
+async function syncProfileLibrary(user: ProfileUser) {
+  const localMangas = getSavedMangas(user.id);
+  const legacyMangas = getSavedMangas(normalizeLegacyUserId(user.email));
+  const remoteMangas = await getRemoteSavedMangas(user.id);
+  const mergedMangas = mergeSavedMangas(remoteMangas, legacyMangas, localMangas);
+
+  await upsertRemoteSavedMangas(user.id, mergedMangas);
+  writeJson(getLibraryKey(user.id), mergedMangas);
+  getStorage()?.removeItem(LEGACY_ACCOUNTS_KEY);
+
+  return mergedMangas;
+}
+
+async function completeProfileSession(user: User): Promise<ProfileSessionResult> {
+  const profileUser = toProfileUser(user);
+
+  setCurrentUser(profileUser);
+
+  try {
+    const mangas = await syncProfileLibrary(profileUser);
+
+    return { user: profileUser, mangas };
+  } catch (error) {
+    return {
+      user: profileUser,
+      mangas: getSavedMangas(profileUser.id),
+      message:
+        error instanceof Error
+          ? `${error.message}. Se conservara la copia local para volver a intentarlo.`
+          : 'No se pudo sincronizar la biblioteca. Se conservara la copia local.',
+    };
+  }
+}
+
+export { isSupabaseConfigured };
+
+export function getCurrentUser() {
+  const user = readJson<ProfileUser | null>(CURRENT_USER_KEY, null);
+
+  if (!user?.id || !user.email || user.provider !== 'supabase') {
     return null;
   }
 
-  const localUser = { ...user, provider: 'local' as const };
-
-  if (user.provider !== 'local') {
-    setCurrentUser(localUser);
-  }
-
-  return localUser;
+  return user;
 }
 
-export function createLocalProfile(name: string, email: string) {
+export async function restoreOnlineProfile(): Promise<ProfileSessionResult> {
+  if (!supabase) {
+    return { user: null, mangas: [] };
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error('No se pudo restaurar la sesion del perfil');
+  }
+
+  if (!data.session?.user) {
+    clearCurrentUser();
+    return { user: null, mangas: [] };
+  }
+
+  const { data: verifiedUserData, error: verifiedUserError } = await supabase.auth.getUser();
+
+  if (verifiedUserError || !verifiedUserData.user) {
+    throw new Error('No se pudo validar la sesion del perfil');
+  }
+
+  return completeProfileSession(verifiedUserData.user);
+}
+
+export async function createOnlineProfile(name: string, email: string, password: string) {
   const trimmedName = name.trim();
   const normalizedEmail = validateEmail(email);
+
+  validatePassword(password);
 
   if (trimmedName.length < 2) {
     throw new Error('Ingresa tu nombre');
   }
 
-  const accounts = getAccounts();
-
-  if (accounts.some((account) => account.email === normalizedEmail)) {
-    throw new Error('Ya existe un perfil local con ese correo');
-  }
-
-  const now = new Date().toISOString();
-  const account: LocalAccount = {
-    id: normalizeUserId(normalizedEmail),
-    name: trimmedName,
+  const client = requireSupabase();
+  const { data, error } = await client.auth.signUp({
     email: normalizedEmail,
-    provider: 'local',
-    createdAt: now,
-    updatedAt: now,
-  };
-  const nextAccounts = [
-    account,
-    ...accounts.filter((existingAccount) => existingAccount.email !== normalizedEmail),
-  ];
-  const user = toPublicUser(account);
+    password,
+    options: {
+      data: { name: trimmedName },
+    },
+  });
 
-  saveAccounts(nextAccounts);
-  setCurrentUser(user);
-
-  return user;
-}
-
-export function openLocalProfile(email: string) {
-  const normalizedEmail = validateEmail(email);
-  const account = getAccounts().find((item) => item.email === normalizedEmail);
-
-  if (!account) {
-    throw new Error('No existe un perfil local con ese correo en este navegador');
+  if (error) {
+    throw new Error(getFriendlyAuthError(error.message));
   }
 
-  const user = toPublicUser(account, 'local');
-
-  setCurrentUser(user);
-
-  return user;
-}
-
-export function logoutUser() {
-  const storage = getStorage();
-
-  if (!storage) {
-    return;
+  if (!data.session || !data.user) {
+    return {
+      user: null,
+      mangas: [],
+      message: 'Perfil creado. Revisa tu correo y confirma la cuenta antes de iniciar sesion.',
+    } satisfies ProfileSessionResult;
   }
 
-  storage.removeItem(CURRENT_USER_KEY);
+  return completeProfileSession(data.user);
+}
+
+export async function openOnlineProfile(email: string, password: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.signInWithPassword({
+    email: validateEmail(email),
+    password: validatePassword(password),
+  });
+
+  if (error) {
+    throw new Error(getFriendlyAuthError(error.message));
+  }
+
+  return completeProfileSession(data.user);
+}
+
+export async function changeOnlineProfilePassword(
+  currentPassword: string,
+  newPassword: string,
+  email?: string,
+) {
+  const client = requireSupabase();
+  const validatedCurrentPassword = validatePassword(currentPassword);
+  const validatedNewPassword = validatePassword(newPassword);
+
+  if (validatedCurrentPassword === validatedNewPassword) {
+    throw new Error('La nueva contraseña debe ser distinta de la actual');
+  }
+
+  let accountEmail = email ? validateEmail(email) : '';
+
+  if (!accountEmail) {
+    const { data: currentUserData, error: currentUserError } = await client.auth.getUser();
+    const currentUser = currentUserData.user;
+
+    if (currentUserError || !currentUser?.email) {
+      throw new Error('Vuelve a iniciar sesión antes de cambiar la contraseña');
+    }
+
+    accountEmail = currentUser.email;
+  }
+
+  const { error: verificationError } = await client.auth.signInWithPassword({
+    email: accountEmail,
+    password: validatedCurrentPassword,
+  });
+
+  if (verificationError) {
+    throw new Error(getFriendlyPasswordChangeError(verificationError.message));
+  }
+
+  const { data, error } = await client.auth.updateUser({
+    password: validatedNewPassword,
+  });
+
+  if (error || !data.user) {
+    throw new Error(getFriendlyPasswordChangeError(error?.message ?? 'Password update failed'));
+  }
+
+  return completeProfileSession(data.user);
+}
+
+export async function logoutUser() {
+  try {
+    await supabase?.auth.signOut({ scope: 'local' });
+  } finally {
+    clearCurrentUser();
+  }
 }
 
 export function getSavedMangas(userId: string) {
-  return filterAllowedMangaTitles(readJson<SavedManga[]>(getLibraryKey(userId), []));
+  const mangas = readJson<unknown[]>(getLibraryKey(userId), []).filter(isSavedManga);
+
+  return filterAllowedMangaTitles(mangas);
 }
 
 export function isMangaSaved(userId: string, mangaId: string) {
@@ -234,29 +456,30 @@ export function isScraperMangaSaved(userId: string, providerId: string, mangaId:
   return isMangaSaved(userId, getScraperSavedMangaId(providerId, mangaId));
 }
 
-export function saveManga(userId: string, manga: MangaSearchResult, language: MangaLanguage) {
+export async function saveManga(
+  userId: string,
+  manga: MangaSearchResult,
+  language: MangaLanguage,
+) {
   if (isMangaTitleBlocked(manga.title)) {
     throw new Error('Este manga no esta disponible.');
   }
 
-  const savedMangas = getSavedMangas(userId);
   const nextManga: SavedManga = {
     ...manga,
     language,
     libraryType: 'api',
     savedAt: new Date().toISOString(),
   };
-  const nextSavedMangas = [
-    nextManga,
-    ...savedMangas.filter((savedManga) => savedManga.id !== manga.id),
-  ];
+  const nextSavedMangas = mergeSavedMangas([nextManga], getSavedMangas(userId));
 
   writeJson(getLibraryKey(userId), nextSavedMangas);
+  await upsertRemoteSavedMangas(userId, [nextManga]);
 
   return nextSavedMangas;
 }
 
-export function saveScraperManga(
+export async function saveScraperManga(
   userId: string,
   manga: ScraperMangaResult,
   providerName: string,
@@ -266,7 +489,6 @@ export function saveScraperManga(
     throw new Error('Este manga no esta disponible.');
   }
 
-  const savedMangas = getSavedMangas(userId);
   const mangaId = getScraperSavedMangaId(manga.providerId, manga.id);
   const nextManga: SavedManga = {
     id: mangaId,
@@ -284,17 +506,26 @@ export function saveScraperManga(
     scraperLanguage: providerLanguage,
     sourceUrl: manga.url,
   };
-  const nextSavedMangas = [
-    nextManga,
-    ...savedMangas.filter((savedManga) => savedManga.id !== mangaId),
-  ];
+  const nextSavedMangas = mergeSavedMangas([nextManga], getSavedMangas(userId));
 
   writeJson(getLibraryKey(userId), nextSavedMangas);
+  await upsertRemoteSavedMangas(userId, [nextManga]);
 
   return nextSavedMangas;
 }
 
-export function removeSavedManga(userId: string, mangaId: string) {
+export async function removeSavedManga(userId: string, mangaId: string) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from('saved_mangas')
+    .delete()
+    .eq('user_id', userId)
+    .eq('manga_id', mangaId);
+
+  if (error) {
+    throw new Error('No se pudo eliminar el manga de la biblioteca sincronizada');
+  }
+
   const nextSavedMangas = getSavedMangas(userId).filter((manga) => manga.id !== mangaId);
 
   writeJson(getLibraryKey(userId), nextSavedMangas);

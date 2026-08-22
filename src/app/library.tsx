@@ -25,18 +25,21 @@ import {
   type ScraperChapter,
 } from '@/services/mymangaonline-api';
 import {
-  createLocalProfile,
+  changeOnlineProfilePassword,
+  createOnlineProfile,
   getCurrentUser,
   getSavedMangas,
   getViewedChapterHistory,
-  openLocalProfile,
+  isSupabaseConfigured,
   logoutUser,
+  openOnlineProfile,
   removeSavedManga,
-  type LocalUser,
+  restoreOnlineProfile,
+  type ProfileUser,
   type SavedManga,
 } from '@/services/user-library';
 
-type AuthMode = 'open' | 'create';
+type AuthMode = 'open' | 'create' | 'change';
 const MOBILE_LAYOUT_BREAKPOINT = 640;
 
 type MangaProgress = {
@@ -93,15 +96,24 @@ export default function LibraryScreen() {
   const { contentInset } = useResponsiveLayout();
   const isMobileLayout = viewportWidth < MOBILE_LAYOUT_BREAKPOINT;
   const router = useRouter();
-  const [user, setUser] = useState<LocalUser | null>(() => getCurrentUser());
+  const [user, setUser] = useState<ProfileUser | null>(() => getCurrentUser());
   const [authMode, setAuthMode] = useState<AuthMode>('open');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  const [password, setPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmedNewPassword, setConfirmedNewPassword] = useState('');
+  const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false);
   const [savedMangas, setSavedMangas] = useState<SavedManga[]>(() => (user ? getSavedMangas(user.id) : []));
   const [progressByMangaId, setProgressByMangaId] = useState<Record<string, MangaProgress>>({});
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isRestoringSession, setIsRestoringSession] = useState(isSupabaseConfigured);
   const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+  const [removingMangaId, setRemovingMangaId] = useState<string | null>(null);
 
   const displayedSavedMangas = useMemo(
     () =>
@@ -120,6 +132,47 @@ export default function LibraryScreen() {
       }),
     [progressByMangaId, savedMangas],
   );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function restoreSession() {
+      try {
+        const result = await restoreOnlineProfile();
+
+        if (!isActive) {
+          return;
+        }
+
+        setUser(result.user);
+        setSavedMangas(result.mangas);
+        setNotice(result.message ?? null);
+        setError(null);
+      } catch (restoreError) {
+        if (isActive) {
+          setError(
+            restoreError instanceof Error
+              ? restoreError.message
+              : 'No se pudo restaurar la sesion del perfil',
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsRestoringSession(false);
+        }
+      }
+    }
+
+    void restoreSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || savedMangas.length === 0) {
@@ -228,25 +281,92 @@ export default function LibraryScreen() {
   async function handleProfileSubmit() {
     try {
       setIsSubmitting(true);
-      const nextUser =
-        authMode === 'create'
-          ? createLocalProfile(name, email)
-          : openLocalProfile(email);
-
-      setUser(nextUser);
-      setSavedMangas(getSavedMangas(nextUser.id));
       setError(null);
+      setNotice(null);
+      let result;
+
+      if (authMode === 'change') {
+        if (newPassword !== confirmedNewPassword) {
+          throw new Error('Las contraseñas nuevas no coinciden');
+        }
+
+        result = await changeOnlineProfilePassword(password, newPassword, email);
+      } else {
+        result =
+          authMode === 'create'
+            ? await createOnlineProfile(name, email, password)
+            : await openOnlineProfile(email, password);
+      }
+
+      setUser(result.user);
+      setSavedMangas(result.mangas);
+      setNotice(
+        authMode === 'change'
+          ? 'Contrasena actualizada correctamente.'
+          : (result.message ?? null),
+      );
+      setPassword('');
+      setNewPassword('');
+      setConfirmedNewPassword('');
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'No se pudo abrir el perfil local');
+      setError(authError instanceof Error ? authError.message : 'No se pudo abrir el perfil');
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  function handleLogout() {
-    logoutUser();
-    setUser(null);
-    setSavedMangas([]);
+  async function handleLogout() {
+    try {
+      setIsSubmitting(true);
+      await logoutUser();
+      setUser(null);
+      setSavedMangas([]);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmedNewPassword('');
+      setIsPasswordFormOpen(false);
+      setNotice(null);
+      setError(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function closePasswordForm() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmedNewPassword('');
+    setIsPasswordFormOpen(false);
+    setError(null);
+  }
+
+  async function handlePasswordChange() {
+    try {
+      setIsChangingPassword(true);
+      setError(null);
+      setNotice(null);
+
+      if (newPassword !== confirmedNewPassword) {
+        throw new Error('Las contraseñas nuevas no coinciden');
+      }
+
+      const result = await changeOnlineProfilePassword(currentPassword, newPassword);
+      setUser(result.user);
+      setSavedMangas(result.mangas);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmedNewPassword('');
+      setIsPasswordFormOpen(false);
+      setNotice('Contrasena actualizada correctamente.');
+    } catch (passwordError) {
+      setError(
+        passwordError instanceof Error
+          ? passwordError.message
+          : 'No se pudo cambiar la contraseña',
+      );
+    } finally {
+      setIsChangingPassword(false);
+    }
   }
 
   function openManga(manga: SavedManga) {
@@ -274,12 +394,24 @@ export default function LibraryScreen() {
     });
   }
 
-  function removeManga(mangaId: string) {
+  async function removeManga(mangaId: string) {
     if (!user) {
       return;
     }
 
-    setSavedMangas(removeSavedManga(user.id, mangaId));
+    try {
+      setRemovingMangaId(mangaId);
+      setError(null);
+      setSavedMangas(await removeSavedManga(user.id, mangaId));
+    } catch (removeError) {
+      setError(
+        removeError instanceof Error
+          ? removeError.message
+          : 'No se pudo quitar el manga de la biblioteca',
+      );
+    } finally {
+      setRemovingMangaId(null);
+    }
   }
 
   return (
@@ -300,7 +432,7 @@ export default function LibraryScreen() {
         <title>Mi biblioteca | MyMangaOnline</title>
         <meta
           name="description"
-          content="Organiza mangas y progreso de lectura en un perfil guardado localmente en tu navegador."
+          content="Organiza mangas en un perfil sincronizado y abre tu biblioteca desde otros navegadores."
         />
       </Head>
       <View style={[styles.header, isMobileLayout && styles.compactHeader]}>
@@ -318,23 +450,45 @@ export default function LibraryScreen() {
           Mis mangas
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-          Guarda mangas en tu biblioteca local y vuelve a abrirlos desde aqui.
+          Guarda mangas en tu perfil y recupera la misma biblioteca desde cualquier navegador.
         </ThemedText>
       </View>
 
-      {!user ? (
+      {isRestoringSession ? (
+        <ThemedView type="backgroundElement" style={styles.loadingPanel}>
+          <ActivityIndicator color={theme.textSecondary} />
+          <ThemedText type="small" themeColor="textSecondary">
+            Recuperando tu perfil y biblioteca...
+          </ThemedText>
+        </ThemedView>
+      ) : !user ? (
         <ThemedView type="backgroundElement" style={styles.loginPanel}>
           <View style={styles.loginHeader}>
             <ThemedText type="code" style={styles.panelEyebrow}>
-              PERFIL LOCAL
+              PERFIL EN LÍNEA
             </ThemedText>
             <ThemedText type="subtitle" style={styles.panelTitle}>
-              {authMode === 'create' ? 'Crear perfil' : 'Abrir perfil'}
+              {authMode === 'create'
+                ? 'Crear perfil'
+                : authMode === 'change'
+                  ? 'Cambiar contraseña'
+                  : 'Abrir perfil'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              No es una cuenta en linea: los datos quedan solo en este navegador y no se usa contrasena.
+              {authMode === 'change'
+                ? 'Verifica tu contraseña actual y elige una nueva para conservar tu perfil.'
+                : 'Usa el mismo correo y contraseña para recuperar tus mangas en otro navegador.'}
             </ThemedText>
           </View>
+
+          {!isSupabaseConfigured && (
+            <View style={styles.formError}>
+              <ThemedText type="smallBold">Configuración pendiente</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Agrega la URL y la clave pública de Supabase antes de crear perfiles.
+              </ThemedText>
+            </View>
+          )}
 
           <View style={styles.authModeRow}>
             <Pressable
@@ -355,6 +509,18 @@ export default function LibraryScreen() {
               ]}>
               <ThemedText type="smallBold" style={authMode === 'create' && styles.primaryButtonText}>
                 Crear perfil
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => setAuthMode('change')}
+              style={[
+                styles.authModeButton,
+                authMode === 'change' && styles.authModeButtonActive,
+              ]}>
+              <ThemedText
+                type="smallBold"
+                style={authMode === 'change' && styles.primaryButtonText}>
+                Cambiar contraseña
               </ThemedText>
             </Pressable>
           </View>
@@ -382,6 +548,47 @@ export default function LibraryScreen() {
             textContentType="emailAddress"
             style={[styles.input, { color: theme.text }]}
           />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder={
+              authMode === 'change'
+                ? 'Contraseña actual'
+                : 'Contraseña (mínimo 8 caracteres)'
+            }
+            placeholderTextColor={theme.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            textContentType={authMode === 'create' ? 'newPassword' : 'password'}
+            style={[styles.input, { color: theme.text }]}
+          />
+          {authMode === 'change' && (
+            <>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Nueva contraseña (mínimo 8 caracteres)"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                textContentType="newPassword"
+                style={[styles.input, { color: theme.text }]}
+              />
+              <TextInput
+                value={confirmedNewPassword}
+                onChangeText={setConfirmedNewPassword}
+                placeholder="Repetir nueva contraseña"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                textContentType="newPassword"
+                style={[styles.input, { color: theme.text }]}
+              />
+            </>
+          )}
           {error && (
             <View style={styles.formError}>
               <ThemedText type="small" themeColor="textSecondary">
@@ -389,20 +596,31 @@ export default function LibraryScreen() {
               </ThemedText>
             </View>
           )}
+          {notice && (
+            <View style={styles.formNotice}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {notice}
+              </ThemedText>
+            </View>
+          )}
 
           <Pressable
-            disabled={isSubmitting}
+            disabled={isSubmitting || !isSupabaseConfigured}
             onPress={() => void handleProfileSubmit()}
             style={({ pressed }) => [
               styles.primaryButton,
-              isSubmitting && styles.disabled,
+              (isSubmitting || !isSupabaseConfigured) && styles.disabled,
               pressed && styles.pressed,
             ]}>
             {isSubmitting ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                {authMode === 'create' ? 'Crear perfil local' : 'Abrir perfil local'}
+                {authMode === 'create'
+                  ? 'Crear perfil'
+                  : authMode === 'change'
+                    ? 'Guardar contraseña'
+                    : 'Iniciar sesión'}
               </ThemedText>
             )}
           </Pressable>
@@ -416,11 +634,11 @@ export default function LibraryScreen() {
               )}
               <View style={styles.userInfo}>
                 <ThemedText type="code" style={styles.panelEyebrow}>
-                  SESIÓN LOCAL
+                  PERFIL SINCRONIZADO
                 </ThemedText>
                 <ThemedText type="smallBold">Usuario: {user.name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {user.email} - Solo este dispositivo
+                  {user.email} · Disponible en otros navegadores
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {savedMangas.length} mangas guardados
@@ -432,12 +650,135 @@ export default function LibraryScreen() {
                 )}
               </View>
             </View>
-            <Pressable onPress={handleLogout} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold" themeColor="textSecondary">
-                Cambiar perfil
-              </ThemedText>
-            </Pressable>
+            <View style={styles.profileActions}>
+              <Pressable
+                disabled={isSubmitting || isChangingPassword}
+                onPress={() => {
+                  setIsPasswordFormOpen((isOpen) => !isOpen);
+                  setError(null);
+                  setNotice(null);
+                }}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  (isSubmitting || isChangingPassword) && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  {isPasswordFormOpen ? 'Ocultar cambio' : 'Cambiar contraseña'}
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                disabled={isSubmitting || isChangingPassword}
+                onPress={() => void handleLogout()}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  (isSubmitting || isChangingPassword) && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  Cerrar sesión
+                </ThemedText>
+              </Pressable>
+            </View>
           </ThemedView>
+
+          {isPasswordFormOpen && (
+            <ThemedView type="backgroundElement" style={styles.passwordPanel}>
+              <View style={styles.passwordHeader}>
+                <ThemedText type="code" style={styles.panelEyebrow}>
+                  SEGURIDAD DEL PERFIL
+                </ThemedText>
+                <ThemedText type="subtitle" style={styles.panelTitle}>
+                  Cambiar contraseña
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Confirma tu contraseña actual y usa una nueva de al menos 8 caracteres.
+                </ThemedText>
+              </View>
+
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Contraseña actual"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                textContentType="password"
+                style={[styles.input, { color: theme.text }]}
+              />
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Nueva contraseña (mínimo 8 caracteres)"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                textContentType="newPassword"
+                style={[styles.input, { color: theme.text }]}
+              />
+              <TextInput
+                value={confirmedNewPassword}
+                onChangeText={setConfirmedNewPassword}
+                placeholder="Repetir nueva contraseña"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                textContentType="newPassword"
+                style={[styles.input, { color: theme.text }]}
+              />
+
+              <View style={styles.passwordActions}>
+                <Pressable
+                  disabled={isChangingPassword}
+                  onPress={closePasswordForm}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    isChangingPassword && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    Cancelar
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  disabled={isChangingPassword}
+                  onPress={() => void handlePasswordChange()}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.passwordSaveButton,
+                    isChangingPassword && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}>
+                  {isChangingPassword ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                      Guardar contraseña
+                    </ThemedText>
+                  )}
+                </Pressable>
+              </View>
+            </ThemedView>
+          )}
+
+          {notice && (
+            <View style={styles.formNotice}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {notice}
+              </ThemedText>
+            </View>
+          )}
+
+          {error && (
+            <View style={styles.formError}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {error}
+              </ThemedText>
+            </View>
+          )}
 
           {savedMangas.length > 0 ? (
             <>
@@ -586,10 +927,14 @@ export default function LibraryScreen() {
                         <Pressable
                           accessibilityLabel={`Quitar ${manga.title || 'manga'}`}
                           accessibilityRole="button"
-                          onPress={() => removeManga(manga.id)}
-                          style={({ pressed }) => pressed && styles.pressed}>
+                          disabled={removingMangaId === manga.id}
+                          onPress={() => void removeManga(manga.id)}
+                          style={({ pressed }) => [
+                            removingMangaId === manga.id && styles.disabled,
+                            pressed && styles.pressed,
+                          ]}>
                           <ThemedText type="linkPrimary" style={isMobileLayout && styles.compactRemoveLink}>
-                            Quitar
+                            {removingMangaId === manga.id ? 'Quitando...' : 'Quitar'}
                           </ThemedText>
                         </Pressable>
                       </View>
@@ -694,6 +1039,7 @@ const styles = StyleSheet.create({
   },
   authModeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.two,
     padding: Spacing.one,
     borderRadius: Spacing.two,
@@ -701,6 +1047,7 @@ const styles = StyleSheet.create({
   },
   authModeButton: {
     flex: 1,
+    minWidth: 128,
     minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
@@ -716,6 +1063,23 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#b72d3b',
     backgroundColor: 'rgba(120, 130, 150, 0.1)',
+  },
+  formNotice: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2364d2',
+    backgroundColor: 'rgba(35, 100, 210, 0.08)',
+  },
+  loadingPanel: {
+    minHeight: 104,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
   },
   primaryButton: {
     minHeight: 44,
@@ -747,6 +1111,30 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.four,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(120, 130, 150, 0.22)',
+  },
+  profileActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  passwordPanel: {
+    gap: Spacing.three,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120, 130, 150, 0.22)',
+  },
+  passwordHeader: {
+    gap: Spacing.one,
+  },
+  passwordActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: Spacing.two,
+  },
+  passwordSaveButton: {
+    minWidth: 172,
   },
   userInfo: {
     gap: Spacing.one,

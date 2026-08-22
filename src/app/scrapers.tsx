@@ -95,6 +95,7 @@ export default function ScrapersScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(false);
+  const [isSavingLibrary, setIsSavingLibrary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [pagesError, setPagesError] = useState<string | null>(null);
@@ -308,38 +309,64 @@ export default function ScrapersScreen() {
     return savedMangaIds.has(getScraperSavedMangaId(manga.providerId, manga.id));
   }
 
-  function saveResult(manga: ScraperMangaResult) {
+  async function saveResult(manga: ScraperMangaResult) {
     if (!currentUser) {
       router.push('/library');
       return;
     }
 
-    saveScraperManga(
-      currentUser.id,
-      manga,
-      getProviderName(manga.providerId),
-      getProviderLanguage(manga.providerId),
-    );
-    setSavedVersion((current) => current + 1);
-    setLibraryMessage(`${manga.title || 'Manga'} guardado en Mis mangas.`);
-  }
-
-  function saveAllResults() {
-    if (!currentUser) {
-      router.push('/library');
-      return;
-    }
-
-    results.forEach((manga) => {
-      saveScraperManga(
+    try {
+      setIsSavingLibrary(true);
+      setError(null);
+      await saveScraperManga(
         currentUser.id,
         manga,
         getProviderName(manga.providerId),
         getProviderLanguage(manga.providerId),
       );
-    });
-    setSavedVersion((current) => current + 1);
-    setLibraryMessage(`${results.length} mangas guardados en Mis mangas.`);
+      setLibraryMessage(`${manga.title || 'Manga'} guardado y sincronizado.`);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'No se pudo sincronizar el manga guardado',
+      );
+    } finally {
+      setSavedVersion((current) => current + 1);
+      setIsSavingLibrary(false);
+    }
+  }
+
+  async function saveAllResults() {
+    if (!currentUser) {
+      router.push('/library');
+      return;
+    }
+
+    try {
+      setIsSavingLibrary(true);
+      setError(null);
+      await Promise.all(
+        results.map((manga) =>
+          saveScraperManga(
+            currentUser.id,
+            manga,
+            getProviderName(manga.providerId),
+            getProviderLanguage(manga.providerId),
+          ),
+        ),
+      );
+      setLibraryMessage(`${results.length} mangas guardados y sincronizados.`);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'No se pudieron sincronizar todos los mangas',
+      );
+    } finally {
+      setSavedVersion((current) => current + 1);
+      setIsSavingLibrary(false);
+    }
   }
 
   function openPreviousResultPage() {
@@ -504,15 +531,15 @@ export default function ScrapersScreen() {
           </View>
           {results.length > 0 && (
             <Pressable
-              disabled={isSearching}
-              onPress={saveAllResults}
+              disabled={isSearching || isSavingLibrary}
+              onPress={() => void saveAllResults()}
               style={({ pressed }) => [
                 styles.saveAllButton,
-                isSearching && styles.disabled,
+                (isSearching || isSavingLibrary) && styles.disabled,
                 pressed && styles.pressed,
               ]}>
               <ThemedText type="smallBold" style={styles.primaryText}>
-                Guardar resultados
+                {isSavingLibrary ? 'Sincronizando...' : 'Guardar resultados'}
               </ThemedText>
             </Pressable>
           )}
@@ -572,14 +599,16 @@ export default function ScrapersScreen() {
                     </View>
                   </Pressable>
                   <Pressable
-                    onPress={() => saveResult(manga)}
+                    disabled={isSavingLibrary}
+                    onPress={() => void saveResult(manga)}
                     style={({ pressed }) => [
                       styles.saveResultButton,
                       isMangaSaved && styles.saveResultButtonActive,
+                      isSavingLibrary && styles.disabled,
                       pressed && styles.pressed,
                     ]}>
                     <ThemedText type="smallBold" style={isMangaSaved && styles.primaryText}>
-                      {isMangaSaved ? 'Guardado' : 'Guardar'}
+                      {isSavingLibrary ? 'Sincronizando...' : isMangaSaved ? 'Guardado' : 'Guardar'}
                     </ThemedText>
                   </Pressable>
                 </View>

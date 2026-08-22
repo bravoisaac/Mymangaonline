@@ -49,6 +49,8 @@ services:
       dockerfile: Dockerfile
       args:
         EXPO_PUBLIC_MYMANGA_API_URL: /api
+        EXPO_PUBLIC_SUPABASE_URL: "${EXPO_PUBLIC_SUPABASE_URL:?Define EXPO_PUBLIC_SUPABASE_URL in .env.compose}"
+        EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "${EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?Define EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.compose}"
     restart: unless-stopped
     depends_on:
       api:
