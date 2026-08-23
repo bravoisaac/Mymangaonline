@@ -11,6 +11,7 @@
 [![License](https://img.shields.io/badge/Licencia-MIT-16A34A)](./LICENSE)
 
 <p>
+  [![License](href="https://mymangaonline-personal.pages.dev)](Abrir aplicación web)
   <a href="https://mymangaonline-personal.pages.dev"><strong>Abrir aplicación web</strong></a>
 </p>
 
