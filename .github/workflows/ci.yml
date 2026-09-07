@@ -22,8 +22,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: node --check scripts/smoke-deployment.mjs
-      - run: npm run export:web
-        env:
-          EXPO_PUBLIC_MYMANGA_API_URL: https://api.example.invalid/api
+      - run: cp .env.production.example .env.production
+      - run: npm run export:web:production
       - run: npm audit --omit=dev --audit-level=high
       - run: docker build --build-arg EXPO_PUBLIC_MYMANGA_API_URL=https://api.example.invalid/api -t mymangaonline-web:ci .

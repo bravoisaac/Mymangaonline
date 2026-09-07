@@ -37,14 +37,19 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "node ./scripts/run-expo-with-env.mjs .env.local start",
+    "start:local": "node ./scripts/run-expo-with-env.mjs .env.local start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "android": "node ./scripts/run-expo-with-env.mjs .env.local start --android",
+    "ios": "node ./scripts/run-expo-with-env.mjs .env.local start --ios",
+    "web": "node ./scripts/run-expo-with-env.mjs .env.local start --web",
+    "web:local": "node ./scripts/run-expo-with-env.mjs .env.local start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "export:web": "expo export --platform web --clear",
+    "export:web": "node ./scripts/run-expo-with-env.mjs .env.production export --platform web --clear",
+    "export:web:local": "node ./scripts/run-expo-with-env.mjs .env.local export --platform web --clear",
+    "export:web:production": "node ./scripts/run-expo-with-env.mjs .env.production export --platform web --clear",
+    "export:web:injected": "expo export --platform web --clear",
     "smoke:deploy": "node scripts/smoke-deployment.mjs"
   },
   "private": true

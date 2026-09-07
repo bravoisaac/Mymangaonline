@@ -98,6 +98,7 @@ export default function ChapterScreen() {
   const [chapters, setChapters] = useState<MangaChapter[]>([]);
   const [chapterTotal, setChapterTotal] = useState(0);
   const [chapterPages, setChapterPages] = useState<ChapterPages | null>(null);
+  const [fallbackPageUrls, setFallbackPageUrls] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
   const [isLoadingNext, setIsLoadingNext] = useState(false);
@@ -139,6 +140,7 @@ export default function ChapterScreen() {
       try {
         setError(null);
         setChapterPages(null);
+        setFallbackPageUrls([]);
         setIsLoading(true);
         const nextPages = await getChapterPagesFromApi(source, nextChapterId, { quality: 'data' });
 
@@ -213,13 +215,14 @@ export default function ChapterScreen() {
         return;
       }
 
-      setChapterPages(fallbackPages);
+      setFallbackPageUrls(fallbackPages.pageUrls);
       setError(null);
     } catch (recoveryError) {
       if (chapterRequestVersion.current !== recoveryRequestVersion) {
         return;
       }
 
+      hasRequestedFallbackPages.current = false;
       setError(
         recoveryError instanceof Error
           ? recoveryError.message
@@ -355,6 +358,7 @@ export default function ChapterScreen() {
       renderItem={({ item, index }) => (
         <ChapterPage
           pageUrl={item}
+          fallbackPageUrl={fallbackPageUrls[index]}
           pageIndex={index}
           chapterId={chapterId}
           source={source}
@@ -435,6 +439,7 @@ export default function ChapterScreen() {
 
 type ChapterPageProps = {
   pageUrl: string;
+  fallbackPageUrl?: string;
   pageIndex: number;
   chapterId?: string;
   source: MangaSourceId;
@@ -443,6 +448,7 @@ type ChapterPageProps = {
 
 const ChapterPage = memo(function ChapterPage({
   pageUrl,
+  fallbackPageUrl,
   pageIndex,
   chapterId,
   source,
@@ -452,32 +458,35 @@ const ChapterPage = memo(function ChapterPage({
   const [hasLoadError, setHasLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const hasReportedFinalError = useRef(false);
-  const retryUrls = useMemo(() => getChapterPageRetryUrls(source, pageUrl), [pageUrl, source]);
+  const retryUrls = useMemo(
+    () => getChapterPageRetryUrls(source, pageUrl, fallbackPageUrl),
+    [fallbackPageUrl, pageUrl, source],
+  );
   const activePageUrl = retryUrls[Math.min(retryCount, retryUrls.length - 1)] ?? pageUrl;
 
   useEffect(() => {
-    if (!hasLoadError || retryCount >= CHAPTER_PAGE_RETRY_DELAYS_MS.length) {
+    if (!hasLoadError || retryCount >= retryUrls.length - 1) {
       return;
     }
 
     const retryTimeout = setTimeout(() => {
       setRetryCount((currentCount) => currentCount + 1);
       setHasLoadError(false);
-    }, CHAPTER_PAGE_RETRY_DELAYS_MS[retryCount]);
+    }, CHAPTER_PAGE_RETRY_DELAYS_MS[retryCount % CHAPTER_PAGE_RETRY_DELAYS_MS.length]);
 
     return () => clearTimeout(retryTimeout);
-  }, [hasLoadError, retryCount]);
+  }, [hasLoadError, retryCount, retryUrls.length]);
 
   useEffect(() => {
     if (
       hasLoadError &&
-      retryCount >= CHAPTER_PAGE_RETRY_DELAYS_MS.length &&
+      retryCount >= retryUrls.length - 1 &&
       !hasReportedFinalError.current
     ) {
       hasReportedFinalError.current = true;
       onFinalLoadError();
     }
-  }, [hasLoadError, onFinalLoadError, retryCount]);
+  }, [hasLoadError, onFinalLoadError, retryCount, retryUrls.length]);
 
   function handleLoad(event: ImageLoadEventData) {
     setHasLoadError(false);
@@ -496,7 +505,7 @@ const ChapterPage = memo(function ChapterPage({
   }
 
   if (hasLoadError) {
-    const isWaitingToRetry = retryCount < CHAPTER_PAGE_RETRY_DELAYS_MS.length;
+    const isWaitingToRetry = retryCount < retryUrls.length - 1;
 
     return (
       <ThemedView
@@ -508,14 +517,14 @@ const ChapterPage = memo(function ChapterPage({
             <ActivityIndicator size="small" />
             <ThemedText type="smallBold">Cargando pagina {pageIndex + 1}...</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Reintento automatico {retryCount + 1} de {CHAPTER_PAGE_RETRY_DELAYS_MS.length}.
+              Reintento automatico {retryCount + 1} de {retryUrls.length - 1}.
             </ThemedText>
           </>
         ) : (
           <>
             <ThemedText type="smallBold">No se pudo cargar la pagina {pageIndex + 1}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Comprueba tu conexion o vuelve a intentarlo.
+              La pagina no esta disponible en MangaDex. Puedes volver a intentarlo.
             </ThemedText>
             <Pressable
               accessibilityLabel={`Reintentar pagina ${pageIndex + 1}`}

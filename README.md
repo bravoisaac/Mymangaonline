@@ -98,7 +98,14 @@ cd Mymangaonline
 npm ci
 ```
 
-Crea `.env.local` en la raíz del proyecto y define la URL de la API:
+Crea las dos configuraciones desde sus plantillas:
+
+```powershell
+Copy-Item .env.local.example .env.local
+Copy-Item .env.production.example .env.production
+```
+
+`.env.local` se usa al iniciar el proyecto y debe apuntar a los servicios locales:
 
 ```env
 EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api
@@ -107,6 +114,8 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_reemplazar
 ```
 
 > Las variables `EXPO_PUBLIC_*` quedan incluidas en el cliente. Usa sólo la clave Publishable de Supabase; nunca una clave `service_role`.
+
+`.env.production` se usa únicamente al exportar la web. Ya incluye la API publicada; completa una sola vez los datos públicos de Supabase. Los comandos aíslan el archivo seleccionado de las variables heredadas del terminal.
 
 Inicia la aplicación web:
 
@@ -134,7 +143,9 @@ npm run ios      # iOS
 | `npm run ios` | Abre el proyecto en iOS |
 | `npm run lint` | Ejecuta ESLint |
 | `npm run typecheck` | Valida los tipos sin generar archivos |
-| `npm run export:web` | Genera el export estático para web |
+| `npm run export:web` | Genera el export web con `.env.production` |
+| `npm run export:web:production` | Genera el export web con `.env.production` |
+| `npm run export:web:local` | Genera un export de prueba con `.env.local` |
 | `npm run smoke:deploy` | Comprueba un despliegue publicado |
 
 ## Rutas principales
@@ -156,7 +167,7 @@ Antes de publicar cambios:
 ```bash
 npm run lint
 npm run typecheck
-npm run export:web
+npm run export:web:production
 ```
 
 ## Despliegue

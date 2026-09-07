@@ -11,7 +11,7 @@ La aplicación usa Supabase Auth para el acceso con correo y contraseña, y la t
    `migrations/202608210001_create_saved_mangas.sql` y ejecútalo una vez.
 3. En **Authentication > URL Configuration**, define la URL pública del sitio.
 4. Copia la **Project URL** y la clave **Publishable** desde el panel **Connect**.
-5. Crea `Mymangaonline/.env.local` con:
+5. Copia `Mymangaonline/.env.local.example` como `Mymangaonline/.env.local` y completa:
 
 ```env
 EXPO_PUBLIC_MYMANGA_API_URL=http://localhost:3000/api

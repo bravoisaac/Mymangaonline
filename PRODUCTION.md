@@ -35,7 +35,7 @@ Edita `.env.compose` y reemplaza obligatoriamente:
 - `EXPO_PUBLIC_SUPABASE_URL`: URL publica del proyecto Supabase.
 - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: clave Publishable; nunca `service_role`.
 
-Los archivos `.env*` reales estan excluidos de Git y de ambos contextos Docker. Las variables `EXPO_PUBLIC_*` se incorporan al cliente y sólo pueden contener valores públicos. Antes del primer despliegue ejecuta la migración indicada en [`supabase/README.md`](./supabase/README.md).
+Los archivos `.env*` reales estan excluidos de Git y de ambos contextos Docker. Para una exportación local de producción, copia `.env.production.example` a `.env.production` y ejecuta `npm run export:web:production`; ese comando ignora `.env.local` y cualquier valor `EXPO_PUBLIC_*` heredado del terminal. Las variables `EXPO_PUBLIC_*` se incorporan al cliente y sólo pueden contener valores públicos. Antes del primer despliegue ejecuta la migración indicada en [`supabase/README.md`](./supabase/README.md).
 
 ## Construir y arrancar
 

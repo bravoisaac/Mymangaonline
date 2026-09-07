@@ -608,23 +608,30 @@ export async function getMangaChaptersFromApi(
   };
 }
 
-export function getChapterPageRetryUrls(source: MangaSourceId, pageUrl: string) {
+export function getChapterPageRetryUrls(
+  source: MangaSourceId,
+  pageUrl: string,
+  fallbackPageUrl?: string,
+) {
   if (source !== 'mangadex') {
     return [pageUrl];
   }
 
-  try {
-    return [
-      pageUrl,
-      ...Array.from({ length: 3 }, (_, index) => {
-        const retryUrl = new URL(pageUrl);
-        retryUrl.searchParams.set('mmo_retry', String(index + 1));
-        return retryUrl.toString();
-      }),
-    ];
-  } catch {
-    return [pageUrl];
-  }
+  return Array.from(new Set([pageUrl, fallbackPageUrl].filter((url): url is string => Boolean(url))))
+    .flatMap((candidateUrl) => {
+      try {
+        return [
+          candidateUrl,
+          ...Array.from({ length: 3 }, (_, index) => {
+            const retryUrl = new URL(candidateUrl);
+            retryUrl.searchParams.set('mmo_retry', String(index + 1));
+            return retryUrl.toString();
+          }),
+        ];
+      } catch {
+        return [candidateUrl];
+      }
+    });
 }
 
 export async function getChapterPagesFromApi(

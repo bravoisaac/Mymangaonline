@@ -149,18 +149,17 @@ La respuesta debe incluir `ok: true`. La primera solicitud puede tardar mientras
 
 ## 4. Exportar el frontend con la URL de Render
 
-Las variables `EXPO_PUBLIC_*` se insertan en el JavaScript durante el build. Configura previamente Supabase según [`supabase/README.md`](./supabase/README.md) y usa exclusivamente su clave Publishable.
+Las variables `EXPO_PUBLIC_*` se insertan en el JavaScript durante el build. Configura previamente Supabase según [`supabase/README.md`](./supabase/README.md) y usa exclusivamente su clave Publishable. Crea `.env.production` una sola vez; no es necesario modificar variables del terminal para cada despliegue.
 
 ```powershell
 Set-Location .\Mymangaonline
-$env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
-$env:EXPO_PUBLIC_SUPABASE_URL='https://TU-PROYECTO.supabase.co'
-$env:EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_REEMPLAZAR'
-npm.cmd run export:web
+Copy-Item .env.production.example .env.production
+# Edita .env.production con la URL real de Render y los datos públicos de Supabase.
+npm.cmd run export:web:production
 Set-Location ..
 ```
 
-El resultado queda en `Mymangaonline/dist/`. Si cambia la URL de la API, es obligatorio volver a exportar y subir el frontend.
+El resultado queda en `Mymangaonline/dist/`. Los comandos de producción leen exclusivamente `.env.production`, aunque el terminal o `.env.local` contengan otros valores. Si cambia la URL de la API, actualiza ese archivo, vuelve a exportar y sube el frontend.
 
 ## 5. Publicar el frontend en Cloudflare Pages sin Git
 
@@ -184,7 +183,7 @@ npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-
 
 En Cloudflare abre **Workers & Pages > Create application > Get started > Drag and drop**, crea el proyecto y carga la carpeta `dist`. Esta opción tiene un límite menor de archivos que Wrangler, pero sirve si no quieres usar la CLI.
 
-En Windows, selecciona directamente la carpeta `dist`; no subas un ZIP creado con `Compress-Archive`. Ese ZIP puede conservar separadores `\` en las rutas internas y provocar que Cloudflare entregue el HTML de respaldo en lugar de los bundles JavaScript. Antes de publicar, `npm run export:web` limpia la caché de Metro para que los cambios en `EXPO_PUBLIC_MYMANGA_API_URL` queden incorporados.
+En Windows, selecciona directamente la carpeta `dist`; no subas un ZIP creado con `Compress-Archive`. Ese ZIP puede conservar separadores `\` en las rutas internas y provocar que Cloudflare entregue el HTML de respaldo en lugar de los bundles JavaScript. Antes de publicar, `npm run export:web:production` limpia la caché de Metro para que los cambios en `.env.production` queden incorporados.
 
 Un proyecto creado como Direct Upload no puede convertirse después en un proyecto con integración Git; habría que crear otro proyecto de Pages.
 
@@ -244,13 +243,10 @@ En Render cambia la referencia de imagen de `:1.0.0` a `:1.0.1` y lanza el despl
 
 ```powershell
 Set-Location .\Mymangaonline
-$env:EXPO_PUBLIC_MYMANGA_API_URL='https://TU-API.onrender.com/api'
-$env:EXPO_PUBLIC_SUPABASE_URL='https://TU-PROYECTO.supabase.co'
-$env:EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_REEMPLAZAR'
 npm.cmd ci
 npm.cmd run lint
 npm.cmd run typecheck
-npm.cmd run export:web
+npm.cmd run export:web:production
 Set-Location ..
 npx.cmd wrangler pages deploy .\Mymangaonline\dist --project-name=mymangaonline-personal
 ```
