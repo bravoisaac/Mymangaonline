@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -34,7 +35,7 @@ import {
 import { markChapterViewed } from '@/services/user-library';
 
 const CHAPTER_BATCH_SIZE = 10;
-const CHAPTER_PAGE_RETRY_DELAYS_MS = [2000, 4000, 8000] as const;
+const CHAPTER_PAGE_RETRY_DELAYS_MS = [750, 1500, 3000] as const;
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -124,6 +125,7 @@ export default function ChapterScreen() {
   const canLoadPreviousChapter = chapterOrder === 'desc' ? hasLaterBatch : hasEarlierBatch;
   const canLoadNextChapter = chapterOrder === 'desc' ? hasEarlierBatch : hasLaterBatch;
   const isNavigatingChapters = isLoadingPrevious || isLoadingNext;
+  const pageUrls = chapterPages?.pageUrls ?? [];
 
   useEffect(() => {
     if (!mangaId || !chapterId) {
@@ -232,28 +234,33 @@ export default function ChapterScreen() {
   }, [chapterId, source]);
 
   useEffect(() => {
-    if (!chapterPages || !nextChapter) {
+    if (!chapterPages || Platform.OS !== 'web') {
       return;
     }
 
     let isActive = true;
 
-    void getChapterPagesFromApi(source, nextChapter.id)
-      .then((pages) => {
-        if (!isActive || pages.pageUrls.length === 0) {
-          return;
+    const urls = chapterPages.pageUrls;
+    let nextPageIndex = 0;
+    // Warm the current chapter in reading order without flooding the image host.
+    async function preloadPages() {
+      while (isActive && nextPageIndex < urls.length) {
+        const pageUrl = urls[nextPageIndex++];
+        try {
+          await Image.prefetch(pageUrl, 'memory-disk');
+        } catch {
+          // Visible pages retain their own retry and error handling.
         }
+      }
+    }
 
-        return Image.prefetch(pages.pageUrls.slice(0, 2), 'memory-disk');
-      })
-      .catch(() => {
-        // Prefetching is opportunistic and must not interrupt the current chapter.
-      });
+    void preloadPages();
+    void preloadPages();
 
     return () => {
       isActive = false;
     };
-  }, [chapterPages, nextChapter, source]);
+  }, [chapterPages]);
 
   function openMangaLobby() {
     if (!mangaId) {
@@ -343,6 +350,7 @@ export default function ChapterScreen() {
 
   return (
     <FlatList
+      key={`${chapterId}-${Platform.OS === 'web' ? pageUrls.length : 'native'}`}
       style={[styles.scroll, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.content,
@@ -353,7 +361,7 @@ export default function ChapterScreen() {
           paddingRight: Spacing.three + contentInset.right,
         },
       ]}
-      data={chapterPages?.pageUrls ?? []}
+      data={pageUrls}
       keyExtractor={(pageUrl, index) => `${chapterId}-${index}-${pageUrl}`}
       renderItem={({ item, index }) => (
         <ChapterPage
@@ -428,8 +436,8 @@ export default function ChapterScreen() {
           </View>
         ) : null
       }
-      initialNumToRender={2}
-      maxToRenderPerBatch={2}
+      initialNumToRender={Platform.OS === 'web' ? Math.max(pageUrls.length, 1) : 2}
+      maxToRenderPerBatch={Platform.OS === 'web' ? Math.max(pageUrls.length, 1) : 2}
       updateCellsBatchingPeriod={80}
       windowSize={3}
       showsVerticalScrollIndicator={false}
